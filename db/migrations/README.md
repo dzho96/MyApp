@@ -16,7 +16,8 @@ Files are numbered in the order they should be applied:
 ```
 0001_actionable_events_and_subtasks.sql
 0002_reminders.sql
-0003_next_change.sql
+0003_reminders_add_dismissed_and_snooze.sql
+0004_next_change.sql
 ...
 ```
 
@@ -154,4 +155,5 @@ Get-ChildItem db/migrations/*.sql | Sort-Object Name | ForEach-Object {
 | File | Summary |
 |---|---|
 | `0001_actionable_events_and_subtasks.sql` | Adds `requires_action`/`completed` to `events`, restricts `category` to `personal`/`work`/`games`, adds the `event_tasks` sub-task table and supporting indexes. |
-| `0002_reminders.sql` | Adds the `reminders` table (per-event scheduled notifications, supports multiple reminders per event, snooze via `snoozed_from_id` self-reference, `push`/`web_push` delivery methods) and supporting indexes. |
+| `0002_reminders.sql` | Intended to add the `reminders` table, but `reminders` already existed from the original `db/schema.sql` (with only `id`/`event_id`/`remind_at`/`method`/`created_at`/`completed`/`dispatched_at`), so its `CREATE TABLE IF NOT EXISTS` silently no-op'd and its `dismissed`-column index failed. Superseded by `0003`. |
+| `0003_reminders_add_dismissed_and_snooze.sql` | Corrects `0002`: adds the missing `dismissed`, `snoozed_from_id` (self-reference for snooze chains), and `updated_at` columns to the pre-existing `reminders` table, tightens `completed`/`method` to `NOT NULL` with defaults, adds the `method` CHECK constraint, and creates the due-reminders and `event_id` indexes. |
