@@ -327,11 +327,27 @@ function TaskChecklist({ eventId, requiresAction }) {
 function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
   const [name, setName] = useState(initialEvent?.name || '')
   const [description, setDescription] = useState(initialEvent?.description || '')
-  const [startTime, setStartTime] = useState(toLocalInputValue(initialEvent?.start_time))
+  const [startTime, setStartTime] = useState(
+    mode === 'edit' ? toLocalInputValue(initialEvent?.start_time) : toLocalInputValue(new Date().toISOString())
+  )
   const [endTime, setEndTime] = useState(toLocalInputValue(initialEvent?.end_time))
   const [category, setCategory] = useState(initialEvent?.category || '')
   const [requiresAction, setRequiresAction] = useState(!!initialEvent?.requires_action)
   const [completed, setCompleted] = useState(!!initialEvent?.completed)
+  const [draftTasks, setDraftTasks] = useState([])
+  const [newDraftTaskName, setNewDraftTaskName] = useState('')
+
+  function handleAddDraftTask(e) {
+    e.preventDefault()
+    const trimmed = newDraftTaskName.trim()
+    if (!trimmed) return
+    setDraftTasks((prev) => [...prev, trimmed])
+    setNewDraftTaskName('')
+  }
+
+  function handleRemoveDraftTask(index) {
+    setDraftTasks((prev) => prev.filter((_, i) => i !== index))
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -342,20 +358,36 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
       alert(errors.join('\n'))
       return
     }
+
+    if (mode === 'add' && startTime && new Date(startTime).getTime() < Date.now()) {
+      const proceed = window.confirm(
+        'This event starts in the past. This app is meant to track upcoming things — create it anyway?'
+      )
+      if (!proceed) return
+    }
+
     const payload = {
       name,
       description: description || null,
       start_time: startTime ? new Date(startTime).toISOString() : null,
       end_time: endTime ? new Date(endTime).toISOString() : null,
       category: category || null,
-      requires_action: requiresAction,
-      completed
+      requires_action: requiresAction || draftTasks.length > 0,
+      completed: mode === 'add' ? false : completed
     }
     try {
       if (mode === 'edit' && initialEvent) {
         await updateEvent(initialEvent.id, payload)
       } else {
-        await createEvent(payload)
+        const created = await createEvent(payload)
+        const newEventId = created?.id
+        if (draftTasks.length > 0 && newEventId) {
+          await Promise.all(draftTasks.map((taskName, index) =>
+            createEventTask(newEventId, { name: taskName, sort_order: index })
+          ))
+        } else if (draftTasks.length > 0 && !newEventId) {
+          console.warn('Event created but no id was returned; skipping sub-task creation.')
+        }
       }
       await onSaved()
       onClose()
@@ -396,11 +428,41 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
             <input type="checkbox" checked={requiresAction} onChange={(e) => setRequiresAction(e.target.checked)} />
             Requires action
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
-            <input type="checkbox" checked={completed} onChange={(e) => setCompleted(e.target.checked)} />
-            Completed
-          </label>
+          {mode === 'edit' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
+              <input type="checkbox" checked={completed} onChange={(e) => setCompleted(e.target.checked)} />
+              Completed
+            </label>
+          )}
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" style={{ minHeight: 80, padding: 10, borderRadius: 8, border: '1px solid var(--border-default)' }} />
+
+          {mode === 'add' && (
+            <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 10, marginTop: 2 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                Sub-tasks {draftTasks.length > 0 && `(${draftTasks.length})`}
+              </div>
+              {draftTasks.map((taskName, index) => (
+                <div key={`${taskName}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ flex: 1, fontSize: 14, color: 'var(--text-primary)' }}>{taskName}</span>
+                  <button type="button" onClick={() => handleRemoveDraftTask(index)} aria-label="Remove sub-task" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>&times;</button>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  value={newDraftTaskName}
+                  onChange={(e) => setNewDraftTaskName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDraftTask(e) } }}
+                  placeholder="Add a sub-task"
+                  style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)' }}
+                />
+                <button type="button" onClick={handleAddDraftTask} style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer' }}>Add</button>
+              </div>
+              {draftTasks.length > 0 && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Adding sub-tasks marks this event as requiring action.</div>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <button type="submit" style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer', fontWeight: 600 }}>Save</button>
             {mode === 'edit' && (
