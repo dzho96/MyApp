@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Switch } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Switch, Platform } from 'react-native'
 import { Picker } from '@react-native-picker/picker'
-import DateTimePicker from '@react-native-community/datetimepicker'
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker'
 import { CATEGORIES } from '../../../shared/eventLogic'
 import { fetchEvents, createEvent, updateEvent, deleteEvent } from '../api'
 import { fetchEventTasks, createEventTask, updateEventTask, deleteEventTask } from '../tasksApi'
 import { useThemeMode } from '../theme'
 
+
 export default function EventDetailScreen({ route, navigation }) {
   const { colors } = useThemeMode()
   const eventId = route.params?.eventId ?? null
   const isEdit = eventId !== null
+
 
   const [loading, setLoading] = useState(isEdit)
   const [name, setName] = useState('')
@@ -23,9 +25,11 @@ export default function EventDetailScreen({ route, navigation }) {
   const [showStartPicker, setShowStartPicker] = useState(false)
   const [showEndPicker, setShowEndPicker] = useState(false)
 
+
   const [draftTasks, setDraftTasks] = useState([])
   const [newDraftTaskName, setNewDraftTaskName] = useState('')
   const [tasks, setTasks] = useState([])
+
 
   useEffect(() => {
     if (!isEdit) return
@@ -47,10 +51,12 @@ export default function EventDetailScreen({ route, navigation }) {
     fetchEventTasks(eventId).then(setTasks).catch(() => setTasks([]))
   }, [eventId, isEdit])
 
+
   async function refreshTasks() {
     const list = await fetchEventTasks(eventId)
     setTasks(list)
   }
+
 
   function addDraftTask() {
     const trimmed = newDraftTaskName.trim()
@@ -59,9 +65,11 @@ export default function EventDetailScreen({ route, navigation }) {
     setNewDraftTaskName('')
   }
 
+
   function removeDraftTask(index) {
     setDraftTasks((prev) => prev.filter((_, i) => i !== index))
   }
+
 
   async function handleToggleTask(task) {
     try {
@@ -71,6 +79,7 @@ export default function EventDetailScreen({ route, navigation }) {
       Alert.alert('Error', 'Failed to update sub-task')
     }
   }
+
 
   async function handleAddExistingTask() {
     const trimmed = newDraftTaskName.trim()
@@ -84,6 +93,7 @@ export default function EventDetailScreen({ route, navigation }) {
     }
   }
 
+
   async function handleDeleteTask(task) {
     try {
       await deleteEventTask(eventId, task.id)
@@ -92,6 +102,7 @@ export default function EventDetailScreen({ route, navigation }) {
       Alert.alert('Error', 'Failed to delete sub-task')
     }
   }
+
 
   async function handleSave() {
     if (!name.trim()) {
@@ -102,6 +113,7 @@ export default function EventDetailScreen({ route, navigation }) {
       Alert.alert('Invalid dates', 'Start time must be before end time')
       return
     }
+
 
     if (!isEdit && startTime.getTime() < Date.now()) {
       Alert.alert(
@@ -117,6 +129,7 @@ export default function EventDetailScreen({ route, navigation }) {
     doSave()
   }
 
+
   async function doSave() {
     const payload = {
       name: name.trim(),
@@ -128,6 +141,7 @@ export default function EventDetailScreen({ route, navigation }) {
       completed: isEdit ? completed : false
     }
 
+
     if (isEdit) {
       try {
         await updateEvent(eventId, payload)
@@ -137,6 +151,7 @@ export default function EventDetailScreen({ route, navigation }) {
       }
       return
     }
+
 
     let newEventId = null
     const createdTaskIds = []
@@ -165,6 +180,7 @@ export default function EventDetailScreen({ route, navigation }) {
     }
   }
 
+
   function handleDelete() {
     Alert.alert('Delete event', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
@@ -183,6 +199,66 @@ export default function EventDetailScreen({ route, navigation }) {
     ])
   }
 
+
+  // On Android, DateTimePicker's dialog mode must be driven via the
+  // imperative DateTimePickerAndroid.open() API rather than mounted
+  // directly in JSX. Rendering it as a normal component works on iOS
+  // (inline picker, no native dialog) but on Android throws
+  // "Cannot read property 'dismiss' of undefined" once a second picker
+  // instance (Start vs End) exists on the same screen — a known library
+  // issue (react-native-datetimepicker/datetimepicker#907). iOS keeps the
+  // declarative component since it has no such conflict.
+  function openStartPicker() {
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: startTime,
+        mode: 'date',
+        onChange: (event, date) => {
+          if (event.type !== 'set' || !date) return
+          DateTimePickerAndroid.open({
+            value: date,
+            mode: 'time',
+            onChange: (timeEvent, time) => {
+              if (timeEvent.type !== 'set' || !time) return
+              const combined = new Date(date)
+              combined.setHours(time.getHours(), time.getMinutes())
+              setStartTime(combined)
+            }
+          })
+        }
+      })
+    } else {
+      setShowStartPicker(true)
+    }
+  }
+
+
+  function openEndPicker() {
+    const base = endTime || startTime
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: base,
+        mode: 'date',
+        onChange: (event, date) => {
+          if (event.type !== 'set' || !date) return
+          DateTimePickerAndroid.open({
+            value: date,
+            mode: 'time',
+            onChange: (timeEvent, time) => {
+              if (timeEvent.type !== 'set' || !time) return
+              const combined = new Date(date)
+              combined.setHours(time.getHours(), time.getMinutes())
+              setEndTime(combined)
+            }
+          })
+        }
+      })
+    } else {
+      setShowEndPicker(true)
+    }
+  }
+
+
   if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.surfaceMuted }]}>
@@ -190,6 +266,7 @@ export default function EventDetailScreen({ route, navigation }) {
       </View>
     )
   }
+
 
   return (
     <ScrollView style={{ backgroundColor: colors.surfaceMuted }} contentContainerStyle={styles.container}>
@@ -201,6 +278,7 @@ export default function EventDetailScreen({ route, navigation }) {
         style={[styles.input, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
       />
 
+
       <View style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, padding: 0 }]}>
         <Picker selectedValue={category} onValueChange={setCategory} style={{ color: colors.textPrimary }}>
           <Picker.Item label="Select category" value="" />
@@ -208,10 +286,11 @@ export default function EventDetailScreen({ route, navigation }) {
         </Picker>
       </View>
 
-      <TouchableOpacity onPress={() => setShowStartPicker(true)} style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
+
+      <TouchableOpacity onPress={openStartPicker} style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
         <Text style={{ color: colors.textPrimary }}>Start: {startTime.toLocaleString()}</Text>
       </TouchableOpacity>
-      {showStartPicker && (
+      {Platform.OS === 'ios' && showStartPicker && (
         <DateTimePicker
           value={startTime}
           mode="datetime"
@@ -219,10 +298,11 @@ export default function EventDetailScreen({ route, navigation }) {
         />
       )}
 
-      <TouchableOpacity onPress={() => setShowEndPicker(true)} style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
+
+      <TouchableOpacity onPress={openEndPicker} style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
         <Text style={{ color: colors.textPrimary }}>End: {endTime ? endTime.toLocaleString() : 'Not set'}</Text>
       </TouchableOpacity>
-      {showEndPicker && (
+      {Platform.OS === 'ios' && showEndPicker && (
         <DateTimePicker
           value={endTime || startTime}
           mode="datetime"
@@ -230,10 +310,12 @@ export default function EventDetailScreen({ route, navigation }) {
         />
       )}
 
+
       <View style={styles.switchRow}>
         <Text style={{ color: colors.textSecondary }}>Requires action</Text>
         <Switch value={requiresAction} onValueChange={setRequiresAction} />
       </View>
+
 
       {isEdit && (
         <View style={styles.switchRow}>
@@ -241,6 +323,7 @@ export default function EventDetailScreen({ route, navigation }) {
           <Switch value={completed} onValueChange={setCompleted} />
         </View>
       )}
+
 
       <TextInput
         value={description}
@@ -251,9 +334,11 @@ export default function EventDetailScreen({ route, navigation }) {
         style={[styles.input, styles.textArea, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
       />
 
+
       <Text style={{ fontWeight: '700', fontSize: 13, color: colors.textSecondary, marginBottom: 8, marginTop: 8 }}>
         Sub-tasks {isEdit ? `(${tasks.filter((t) => t.completed).length}/${tasks.length})` : (draftTasks.length > 0 ? `(${draftTasks.length})` : '')}
       </Text>
+
 
       {isEdit ? (
         tasks.map((task) => (
@@ -278,6 +363,7 @@ export default function EventDetailScreen({ route, navigation }) {
         ))
       )}
 
+
       <View style={styles.addTaskRow}>
         <TextInput
           value={newDraftTaskName}
@@ -294,9 +380,11 @@ export default function EventDetailScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
+
       <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, { backgroundColor: colors.textPrimary }]}>
         <Text style={{ color: colors.surface, fontWeight: '700', textAlign: 'center' }}>Save</Text>
       </TouchableOpacity>
+
 
       {isEdit && (
         <TouchableOpacity onPress={handleDelete} style={[styles.deleteBtn, { backgroundColor: colors.accentDanger }]}>
@@ -306,6 +394,7 @@ export default function EventDetailScreen({ route, navigation }) {
     </ScrollView>
   )
 }
+
 
 const styles = StyleSheet.create({
   container: { padding: 16 },
