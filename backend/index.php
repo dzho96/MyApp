@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 
+
 // Basic CORS for local development. Adjust in production.
 if (isset($_SERVER['HTTP_ORIGIN'])) {
     header('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN']);
@@ -10,31 +11,43 @@ if (isset($_SERVER['HTTP_ORIGIN'])) {
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    // respond to preflight
     exit;
 }
 
+
 require_once __DIR__ . '/db.php';
+
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
+
 const ALLOWED_CATEGORIES = ['personal', 'work', 'games'];
 
-// PDO's pgsql driver does not reliably cast native PHP booleans to Postgres
-// boolean literals when bound as prepared statement parameters (it can send
-// an empty string instead, which Postgres rejects for a BOOLEAN column).
-// Always pass booleans through this helper before binding.
+
 function pg_bool($value) {
     return $value ? 'true' : 'false';
 }
 
+
+function to_iso8601($value) {
+    if (empty($value)) return null;
+    try {
+        $date = new DateTime($value);
+        return $date->format(DateTime::ATOM);
+    } catch (Exception $e) {
+        return $value;
+    }
+}
+
+
 function sync_event_requires_action($pdo, $eventId) {
-    // Adding a sub-task implies the parent event is actionable.
     $stmt = $pdo->prepare('UPDATE events SET requires_action = true, updated_at = now() WHERE id = :id');
     $stmt->execute([':id' => $eventId]);
 }
+
 
 function get_task_summary($pdo, $eventIds) {
     if (empty($eventIds)) return [];
@@ -48,18 +61,19 @@ function get_task_summary($pdo, $eventIds) {
     return $summary;
 }
 
-// Very small router for development.
+
 try {
     if ($path === '/api') {
         echo json_encode(['service' => 'Personal Time API', 'version' => '0.1']);
         exit;
     }
 
-    // ---- Sub-tasks: /api/events/{id}/tasks and /api/events/{id}/tasks/{taskId} ----
+
     $taskMatches = [];
     if (preg_match('#^/api/events/(\d+)/tasks/(\d+)$#', $path, $taskMatches)) {
         $eventId = (int)$taskMatches[1];
         $taskId = (int)$taskMatches[2];
+
 
         if ($method === 'PUT') {
             $body = json_decode(file_get_contents('php://input'), true);
@@ -89,6 +103,7 @@ try {
             }
         }
 
+
         if ($method === 'DELETE') {
             try {
                 $pdo = get_pdo();
@@ -103,14 +118,17 @@ try {
             }
         }
 
+
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
 
+
     $tasksListMatches = [];
     if (preg_match('#^/api/events/(\d+)/tasks$#', $path, $tasksListMatches)) {
         $eventId = (int)$tasksListMatches[1];
+
 
         if ($method === 'GET') {
             try {
@@ -128,6 +146,7 @@ try {
             echo json_encode(['tasks' => $tasks]);
             exit;
         }
+
 
         if ($method === 'POST') {
             $body = json_decode(file_get_contents('php://input'), true);
@@ -163,18 +182,16 @@ try {
             }
         }
 
+
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
 
+
     if (strpos($path, '/api/events') === 0) {
-        // Route: /api/events or /api/events/{id}
-        // GET /api/events -> list
-        // POST /api/events -> create
-        // PUT /api/events/{id} -> update
-        // DELETE /api/events/{id} -> delete
         $matches = [];
+
 
         if ($method === 'GET') {
             try {
@@ -184,8 +201,11 @@ try {
                 foreach ($events as &$event) {
                     $event['requires_action'] = (bool)$event['requires_action'];
                     $event['completed'] = (bool)$event['completed'];
+                    $event['start_time'] = to_iso8601($event['start_time']);
+                    $event['end_time'] = to_iso8601($event['end_time']);
                 }
                 unset($event);
+
 
                 $eventIds = array_map(fn($e) => $e['id'], $events);
                 $taskSummary = get_task_summary($pdo, $eventIds);
@@ -202,6 +222,7 @@ try {
             exit;
         }
 
+
         if ($method === 'POST') {
             $body = json_decode(file_get_contents('php://input'), true);
             if (!$body || empty($body['name'])) {
@@ -209,7 +230,6 @@ try {
                 echo json_encode(['error' => 'Invalid payload: name is required']);
                 exit;
             }
-            // Basic validation: name length, category, and datetime formats
             $errors = [];
             if (strlen($body['name']) > 255) $errors[] = 'name: too long';
             if (!empty($body['category']) && !in_array($body['category'], ALLOWED_CATEGORIES, true)) {
@@ -258,8 +278,10 @@ try {
             }
         }
 
+
         if (preg_match('#^/api/events/(\d+)$#', $path, $matches)) {
             $eventId = (int)$matches[1];
+
 
             if ($method === 'PUT') {
                 $body = json_decode(file_get_contents('php://input'), true);
@@ -268,7 +290,6 @@ try {
                     echo json_encode(['error' => 'Invalid payload: name is required']);
                     exit;
                 }
-                // Validation similar to create
                 $errors = [];
                 if (strlen($body['name']) > 255) $errors[] = 'name: too long';
                 if (!empty($body['category']) && !in_array($body['category'], ALLOWED_CATEGORIES, true)) {
@@ -310,6 +331,7 @@ try {
                 }
             }
 
+
             if ($method === 'DELETE') {
                 try {
                     $pdo = get_pdo();
@@ -325,11 +347,12 @@ try {
             }
         }
 
-        // unsupported method for this path
+
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
+
 
     http_response_code(404);
     echo json_encode(['error' => 'Not found']);
