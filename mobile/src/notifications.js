@@ -18,13 +18,11 @@ Notifications.setNotificationHandler({
   })
 })
 
-export async function ensureNotificationPermission() {
-  const settings = await Notifications.getPermissionsAsync()
-  if (settings.granted) return true
-  const request = await Notifications.requestPermissionsAsync()
-  return !!request.granted
-}
-
+// On Android 13+, the OS permission prompt for notifications will not
+// reliably appear (and requestPermissionsAsync() can silently resolve to
+// denied/no-op) unless a notification channel already exists. This must
+// run BEFORE ensureNotificationPermission() is called — see
+// setupNotificationCategories below, which does both in the right order.
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return
   await Notifications.setNotificationChannelAsync('reminders', {
@@ -32,6 +30,14 @@ async function ensureAndroidChannel() {
     importance: Notifications.AndroidImportance.HIGH,
     sound: 'default'
   })
+}
+
+export async function ensureNotificationPermission() {
+  await ensureAndroidChannel()
+  const settings = await Notifications.getPermissionsAsync()
+  if (settings.granted) return true
+  const request = await Notifications.requestPermissionsAsync()
+  return !!request.granted
 }
 
 // Reminder -> scheduled local notification id is tracked by tagging the
@@ -47,7 +53,8 @@ export async function scheduleReminderNotification(reminder, event) {
   const remindAt = new Date(reminder.remind_at)
   if (remindAt.getTime() <= Date.now()) return
 
-  await ensureAndroidChannel()
+  const granted = await ensureNotificationPermission()
+  if (!granted) return
 
   const identifier = reminderNotificationIdentifier(reminder.id)
   await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {})
@@ -105,6 +112,8 @@ export async function syncReminderNotifications(remindersWithEvents) {
 }
 
 export async function setupNotificationCategories() {
+  await ensureAndroidChannel()
+
   await Notifications.setNotificationCategoryAsync('reminder-actions', [
     { identifier: 'snooze-15', buttonTitle: 'Snooze 15m', options: { opensAppToForeground: false } },
     { identifier: 'snooze-60', buttonTitle: 'Snooze 1h', options: { opensAppToForeground: false } },

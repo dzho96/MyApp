@@ -148,8 +148,11 @@ export default function App() {
   const navigationRef = useRef(null)
 
   useEffect(() => {
-    setupNotificationCategories()
-    ensureNotificationPermission()
+    async function initNotifications() {
+      await setupNotificationCategories()
+      await ensureNotificationPermission()
+    }
+    initNotifications()
   }, [])
 
   useReminderNotificationResponses(navigationRef)
