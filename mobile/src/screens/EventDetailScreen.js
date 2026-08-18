@@ -407,10 +407,20 @@ const REMINDER_OFFSETS = [
   { label: '1 day before', minutes: 24 * 60 }
 ]
 
+const OFFSET_UNITS = [
+  { label: 'minutes', minutesPerUnit: 1 },
+  { label: 'hours', minutesPerUnit: 60 },
+  { label: 'days', minutesPerUnit: 24 * 60 },
+  { label: 'weeks', minutesPerUnit: 7 * 24 * 60 },
+  { label: 'months', minutesPerUnit: 30 * 24 * 60 }
+]
+
 function ReminderSection({ eventId, startTime, colors }) {
   const [reminders, setReminders] = useState([])
   const [showCustomPicker, setShowCustomPicker] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [offsetAmount, setOffsetAmount] = useState('15')
+  const [offsetUnitIndex, setOffsetUnitIndex] = useState(0)
 
   async function loadReminders() {
     try {
@@ -443,6 +453,18 @@ function ReminderSection({ eventId, startTime, colors }) {
 
   function handleOffsetPress(minutes) {
     const remindAt = new Date(startTime.getTime() - minutes * 60 * 1000)
+    handleAddReminder(remindAt)
+  }
+
+  function handleCustomOffsetSubmit() {
+    const amount = parseFloat(offsetAmount)
+    if (!amount || amount <= 0) {
+      Alert.alert('Invalid amount', 'Enter a number greater than 0')
+      return
+    }
+    const minutesPerUnit = OFFSET_UNITS[offsetUnitIndex].minutesPerUnit
+    const totalMinutes = amount * minutesPerUnit
+    const remindAt = new Date(startTime.getTime() - totalMinutes * 60 * 1000)
     handleAddReminder(remindAt)
   }
 
@@ -511,13 +533,43 @@ function ReminderSection({ eventId, startTime, colors }) {
         ))}
       </View>
 
+      <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>Or set a custom amount before start:</Text>
+      <View style={styles.customOffsetRow}>
+        <TextInput
+          value={offsetAmount}
+          onChangeText={setOffsetAmount}
+          keyboardType="numeric"
+          placeholder="15"
+          placeholderTextColor={colors.textMuted}
+          style={[styles.offsetAmountInput, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
+        />
+        <View style={[styles.offsetUnitPicker, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
+          <Picker
+            selectedValue={offsetUnitIndex}
+            onValueChange={setOffsetUnitIndex}
+            style={{ color: colors.textPrimary }}
+          >
+            {OFFSET_UNITS.map((unit, index) => (
+              <Picker.Item key={unit.label} label={unit.label} value={index} />
+            ))}
+          </Picker>
+        </View>
+        <TouchableOpacity
+          onPress={handleCustomOffsetSubmit}
+          disabled={saving}
+          style={[styles.offsetSubmitBtn, { backgroundColor: colors.textPrimary, opacity: saving ? 0.6 : 1 }]}
+        >
+          <Text style={{ color: colors.surface, fontWeight: '700' }}>Set</Text>
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity
         onPress={openCustomPicker}
         disabled={saving}
         style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, opacity: saving ? 0.6 : 1 }]}
       >
         <Text style={{ color: colors.accentPrimary, fontWeight: '600' }}>
-          {saving ? 'Adding…' : '+ Custom time'}
+          {saving ? 'Adding…' : '+ Custom date & time'}
         </Text>
       </TouchableOpacity>
 
@@ -550,5 +602,9 @@ const styles = StyleSheet.create({
   saveBtn: { borderRadius: 8, padding: 12, marginBottom: 10 },
   deleteBtn: { borderRadius: 8, padding: 12 },
   offsetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
-  offsetChip: { borderWidth: 1, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 }
+  offsetChip: { borderWidth: 1, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
+  customOffsetRow: { flexDirection: 'row', gap: 8, marginBottom: 10, alignItems: 'center' },
+  offsetAmountInput: { width: 60, borderWidth: 1, borderRadius: 8, padding: 8, textAlign: 'center' },
+  offsetUnitPicker: { flex: 1, borderWidth: 1, borderRadius: 8 },
+  offsetSubmitBtn: { borderRadius: 8, paddingHorizontal: 16, justifyContent: 'center' }
 })
