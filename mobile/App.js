@@ -1,16 +1,26 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { NavigationContainer } from '@react-navigation/native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { TouchableOpacity, Text } from 'react-native'
+import * as Notifications from 'expo-notifications'
 import { ThemeProvider, useThemeMode } from './src/theme'
 import DashboardScreen from './src/screens/DashboardScreen'
 import CalendarScreen from './src/screens/CalendarScreen'
 import EventDetailScreen from './src/screens/EventDetailScreen'
+import { snoozeReminder } from './src/api'
+import {
+  ensureNotificationPermission,
+  setupNotificationCategories,
+  cancelReminderNotification,
+  scheduleReminderNotification
+} from './src/notifications'
+
 
 const Tab = createBottomTabNavigator()
 const DashboardStack = createNativeStackNavigator()
 const CalendarStack = createNativeStackNavigator()
+
 
 function HeaderAddButton({ navigation }) {
   const { colors } = useThemeMode()
@@ -21,6 +31,7 @@ function HeaderAddButton({ navigation }) {
   )
 }
 
+
 function HeaderThemeToggle() {
   const { mode, toggleMode, colors } = useThemeMode()
   return (
@@ -29,6 +40,7 @@ function HeaderThemeToggle() {
     </TouchableOpacity>
   )
 }
+
 
 function DashboardStackScreen() {
   const { colors } = useThemeMode()
@@ -48,6 +60,7 @@ function DashboardStackScreen() {
   )
 }
 
+
 function CalendarStackScreen() {
   const { colors } = useThemeMode()
   return (
@@ -64,6 +77,7 @@ function CalendarStackScreen() {
     </CalendarStack.Navigator>
   )
 }
+
 
 function Tabs() {
   const { colors } = useThemeMode()
@@ -82,10 +96,67 @@ function Tabs() {
   )
 }
 
+
+// Handles taps on the Snooze 15m / Snooze 1h / Open notification action
+// buttons (registered in setupNotificationCategories). Snoozing calls the
+// backend, which dismisses the original reminder and inserts a new one
+// with the updated remind_at — we then mirror that by cancelling the old
+// local notification and scheduling a fresh one at the new time.
+function useReminderNotificationResponses(navigationRef) {
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
+      const { actionIdentifier, notification } = response
+      const data = notification.request.content.data || {}
+      const reminderId = data.reminderId
+
+      if (!reminderId) return
+
+      if (actionIdentifier === 'snooze-15' || actionIdentifier === 'snooze-60') {
+        const minutes = actionIdentifier === 'snooze-15' ? 15 : 60
+        try {
+          const result = await snoozeReminder(reminderId, { minutes })
+          await cancelReminderNotification(reminderId)
+          if (result?.id && result?.remind_at) {
+            await scheduleReminderNotification(
+              { id: result.id, remind_at: result.remind_at },
+              { name: notification.request.content.title, description: notification.request.content.body }
+            )
+          }
+        } catch (e) {
+          // Snooze failed server-side; leave original notification's fate
+          // as-is rather than silently losing the reminder.
+        }
+        return
+      }
+
+      if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER || actionIdentifier === 'open') {
+        if (data.eventId && navigationRef.current) {
+          navigationRef.current.navigate('DashboardTab', {
+            screen: 'EventDetail',
+            params: { eventId: data.eventId }
+          })
+        }
+      }
+    })
+
+    return () => subscription.remove()
+  }, [navigationRef])
+}
+
+
 export default function App() {
+  const navigationRef = useRef(null)
+
+  useEffect(() => {
+    setupNotificationCategories()
+    ensureNotificationPermission()
+  }, [])
+
+  useReminderNotificationResponses(navigationRef)
+
   return (
     <ThemeProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <Tabs />
       </NavigationContainer>
     </ThemeProvider>
