@@ -311,7 +311,7 @@ export default function EventDetailScreen({ route, navigation }) {
       )}
 
 
-      {isEdit && <ReminderSection eventId={eventId} startTime={startTime} colors={colors} />}
+      {isEdit && <ReminderSection eventId={eventId} startTime={startTime} endTime={endTime} colors={colors} />}
 
 
       <View style={styles.switchRow}>
@@ -401,10 +401,10 @@ export default function EventDetailScreen({ route, navigation }) {
 
 // --- Reminders ---
 const REMINDER_OFFSETS = [
-  { label: '10 min before', minutes: 10 },
-  { label: '30 min before', minutes: 30 },
-  { label: '1 hour before', minutes: 60 },
-  { label: '1 day before', minutes: 24 * 60 }
+  { label: '10 min', minutes: 10 },
+  { label: '30 min', minutes: 30 },
+  { label: '1 hour', minutes: 60 },
+  { label: '1 day', minutes: 24 * 60 }
 ]
 
 const OFFSET_UNITS = [
@@ -415,12 +415,18 @@ const OFFSET_UNITS = [
   { label: 'months', minutesPerUnit: 30 * 24 * 60 }
 ]
 
-function ReminderSection({ eventId, startTime, colors }) {
+function ReminderSection({ eventId, startTime, endTime, colors }) {
   const [reminders, setReminders] = useState([])
   const [showCustomPicker, setShowCustomPicker] = useState(false)
   const [saving, setSaving] = useState(false)
   const [offsetAmount, setOffsetAmount] = useState('15')
   const [offsetUnitIndex, setOffsetUnitIndex] = useState(0)
+  // Which event boundary the offsets below are relative to. Defaults to
+  // 'start' (the common "remind me before this begins" case), but End is
+  // only selectable when the event actually has an end time set.
+  const [anchor, setAnchor] = useState('start')
+
+  const anchorTime = anchor === 'end' && endTime ? endTime : startTime
 
   async function loadReminders() {
     try {
@@ -452,7 +458,7 @@ function ReminderSection({ eventId, startTime, colors }) {
   }
 
   function handleOffsetPress(minutes) {
-    const remindAt = new Date(startTime.getTime() - minutes * 60 * 1000)
+    const remindAt = new Date(anchorTime.getTime() - minutes * 60 * 1000)
     handleAddReminder(remindAt)
   }
 
@@ -464,7 +470,7 @@ function ReminderSection({ eventId, startTime, colors }) {
     }
     const minutesPerUnit = OFFSET_UNITS[offsetUnitIndex].minutesPerUnit
     const totalMinutes = amount * minutesPerUnit
-    const remindAt = new Date(startTime.getTime() - totalMinutes * 60 * 1000)
+    const remindAt = new Date(anchorTime.getTime() - totalMinutes * 60 * 1000)
     handleAddReminder(remindAt)
   }
 
@@ -520,6 +526,36 @@ function ReminderSection({ eventId, startTime, colors }) {
         </View>
       ))}
 
+      <View style={styles.anchorRow}>
+        <TouchableOpacity
+          onPress={() => setAnchor('start')}
+          style={[
+            styles.anchorChip,
+            { borderColor: colors.borderDefault, backgroundColor: anchor === 'start' ? colors.accentPrimary : colors.surface }
+          ]}
+        >
+          <Text style={{ color: anchor === 'start' ? colors.surface : colors.textPrimary, fontWeight: '600', fontSize: 12 }}>
+            Before start
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => endTime && setAnchor('end')}
+          disabled={!endTime}
+          style={[
+            styles.anchorChip,
+            {
+              borderColor: colors.borderDefault,
+              backgroundColor: anchor === 'end' ? colors.accentPrimary : colors.surface,
+              opacity: endTime ? 1 : 0.4
+            }
+          ]}
+        >
+          <Text style={{ color: anchor === 'end' ? colors.surface : colors.textPrimary, fontWeight: '600', fontSize: 12 }}>
+            Before end{!endTime ? ' (no end time)' : ''}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.offsetRow}>
         {REMINDER_OFFSETS.map((opt) => (
           <TouchableOpacity
@@ -533,7 +569,9 @@ function ReminderSection({ eventId, startTime, colors }) {
         ))}
       </View>
 
-      <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>Or set a custom amount before start:</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>
+        Or set a custom amount before {anchor === 'end' ? 'end' : 'start'}:
+      </Text>
       <View style={styles.customOffsetRow}>
         <TextInput
           value={offsetAmount}
@@ -601,6 +639,8 @@ const styles = StyleSheet.create({
   addBtn: { borderRadius: 8, paddingHorizontal: 14, justifyContent: 'center' },
   saveBtn: { borderRadius: 8, padding: 12, marginBottom: 10 },
   deleteBtn: { borderRadius: 8, padding: 12 },
+  anchorRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  anchorChip: { flex: 1, borderWidth: 1, borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
   offsetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   offsetChip: { borderWidth: 1, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
   customOffsetRow: { flexDirection: 'row', gap: 8, marginBottom: 10, alignItems: 'center' },
