@@ -375,25 +375,58 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
       requires_action: requiresAction || draftTasks.length > 0,
       completed: mode === 'add' ? false : completed
     }
-    try {
-      if (mode === 'edit' && initialEvent) {
+
+    if (mode === 'edit' && initialEvent) {
+      try {
         await updateEvent(initialEvent.id, payload)
-      } else {
-        const created = await createEvent(payload)
-        const newEventId = created?.id
-        if (draftTasks.length > 0 && newEventId) {
-          await Promise.all(draftTasks.map((taskName, index) =>
-            createEventTask(newEventId, { name: taskName, sort_order: index })
-          ))
-        } else if (draftTasks.length > 0 && !newEventId) {
-          console.warn('Event created but no id was returned; skipping sub-task creation.')
+        await onSaved()
+        onClose()
+      } catch (err) {
+        console.error(err)
+        alert('Save failed')
+      }
+      return
+    }
+
+    // Add mode: creating the event plus its sub-tasks is treated as one
+    // all-or-nothing operation. If any sub-task fails to save, we roll back
+    // (delete the event and any sub-tasks that did succeed) rather than
+    // leave a partially-created event with some sub-tasks silently missing.
+    // The form stays open with everything you typed so you can retry.
+    let newEventId = null
+    const createdTaskIds = []
+    try {
+      const created = await createEvent(payload)
+      newEventId = created?.id
+
+      if (draftTasks.length > 0) {
+        if (!newEventId) {
+          throw new Error('Event was created but no id was returned, so sub-tasks cannot be attached.')
+        }
+        for (let index = 0; index < draftTasks.length; index += 1) {
+          const result = await createEventTask(newEventId, { name: draftTasks[index], sort_order: index })
+          if (result?.id) createdTaskIds.push(result.id)
         }
       }
+
       await onSaved()
       onClose()
     } catch (err) {
       console.error(err)
-      alert('Save failed')
+      if (newEventId) {
+        try {
+          for (const taskId of createdTaskIds) {
+            await deleteEventTask(newEventId, taskId)
+          }
+          await deleteEvent(newEventId)
+          await onSaved()
+        } catch (rollbackErr) {
+          console.error('Rollback failed:', rollbackErr)
+          alert('Save failed, and automatic cleanup also failed. Please check your event list for a partially-created "' + name + '" entry and remove it manually.')
+          return
+        }
+      }
+      alert('Could not save this event with its sub-tasks, so nothing was created. Please try again.')
     }
   }
 
@@ -458,7 +491,7 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
                 <button type="button" onClick={handleAddDraftTask} style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer' }}>Add</button>
               </div>
               {draftTasks.length > 0 && (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Adding sub-tasks marks this event as requiring action.</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Adding sub-tasks marks this event as requiring action. If saving fails, nothing will be created.</div>
               )}
             </div>
           )}
