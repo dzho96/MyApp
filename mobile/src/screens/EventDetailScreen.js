@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet,
 import { Picker } from '@react-native-picker/picker'
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker'
 import { CATEGORIES } from '../../../shared/eventLogic'
-import { fetchEvents, createEvent, updateEvent, deleteEvent } from '../api'
+import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchReminders, createReminder, deleteReminder } from '../api'
 import { fetchEventTasks, createEventTask, updateEventTask, deleteEventTask } from '../tasksApi'
 import { useThemeMode } from '../theme'
 
@@ -311,6 +311,9 @@ export default function EventDetailScreen({ route, navigation }) {
       )}
 
 
+      {isEdit && <ReminderSection eventId={eventId} colors={colors} />}
+
+
       <View style={styles.switchRow}>
         <Text style={{ color: colors.textSecondary }}>Requires action</Text>
         <Switch value={requiresAction} onValueChange={setRequiresAction} />
@@ -392,6 +395,119 @@ export default function EventDetailScreen({ route, navigation }) {
         </TouchableOpacity>
       )}
     </ScrollView>
+  )
+}
+
+
+// --- Reminders ---
+function ReminderSection({ eventId, colors }) {
+  const [reminders, setReminders] = useState([])
+  const [showPicker, setShowPicker] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  async function loadReminders() {
+    try {
+      const list = await fetchReminders(eventId)
+      setReminders(list.filter((r) => !r.dismissed))
+    } catch (err) {
+      setReminders([])
+    }
+  }
+
+  useEffect(() => {
+    loadReminders()
+  }, [eventId])
+
+  function openAddReminder() {
+    if (Platform.OS === 'android') {
+      const now = new Date()
+      DateTimePickerAndroid.open({
+        value: now,
+        mode: 'date',
+        minimumDate: now,
+        onChange: (event, date) => {
+          if (event.type !== 'set' || !date) return
+          DateTimePickerAndroid.open({
+            value: date,
+            mode: 'time',
+            onChange: async (timeEvent, time) => {
+              if (timeEvent.type !== 'set' || !time) return
+              const combined = new Date(date)
+              combined.setHours(time.getHours(), time.getMinutes(), 0, 0)
+              await handleAddReminder(combined)
+            }
+          })
+        }
+      })
+    } else {
+      setShowPicker(true)
+    }
+  }
+
+  async function handleAddReminder(remindAt) {
+    if (remindAt.getTime() <= Date.now()) {
+      Alert.alert('Invalid time', 'Reminder time must be in the future')
+      return
+    }
+    setSaving(true)
+    try {
+      await createReminder(eventId, { remind_at: remindAt.toISOString() })
+      await loadReminders()
+    } catch (err) {
+      Alert.alert('Error', 'Failed to create reminder')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDeleteReminder(reminder) {
+    try {
+      await deleteReminder(reminder.id)
+      await loadReminders()
+    } catch (err) {
+      Alert.alert('Error', 'Failed to delete reminder')
+    }
+  }
+
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ fontWeight: '700', fontSize: 13, color: colors.textSecondary, marginBottom: 8 }}>
+        Reminders {reminders.length > 0 ? `(${reminders.length})` : ''}
+      </Text>
+
+      {reminders.map((reminder) => (
+        <View key={reminder.id} style={styles.taskRow}>
+          <Text style={{ flex: 1, color: colors.textPrimary }}>
+            {new Date(reminder.remind_at).toLocaleString()}
+          </Text>
+          <TouchableOpacity onPress={() => handleDeleteReminder(reminder)}>
+            <Text style={{ color: colors.textMuted, fontSize: 18 }}>×</Text>
+          </TouchableOpacity>
+        </View>
+      ))}
+
+      <TouchableOpacity
+        onPress={openAddReminder}
+        disabled={saving}
+        style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, opacity: saving ? 0.6 : 1 }]}
+      >
+        <Text style={{ color: colors.accentPrimary, fontWeight: '600' }}>
+          {saving ? 'Adding…' : '+ Add reminder'}
+        </Text>
+      </TouchableOpacity>
+
+      {Platform.OS === 'ios' && showPicker && (
+        <DateTimePicker
+          value={new Date(Date.now() + 15 * 60 * 1000)}
+          mode="datetime"
+          minimumDate={new Date()}
+          onChange={(event, date) => {
+            setShowPicker(false)
+            if (event.type === 'set' && date) handleAddReminder(date)
+          }}
+        />
+      )}
+    </View>
   )
 }
 
