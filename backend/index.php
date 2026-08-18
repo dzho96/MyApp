@@ -22,6 +22,14 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 const ALLOWED_CATEGORIES = ['personal', 'work', 'games'];
 
+// PDO's pgsql driver does not reliably cast native PHP booleans to Postgres
+// boolean literals when bound as prepared statement parameters (it can send
+// an empty string instead, which Postgres rejects for a BOOLEAN column).
+// Always pass booleans through this helper before binding.
+function pg_bool($value) {
+    return $value ? 'true' : 'false';
+}
+
 function sync_event_requires_action($pdo, $eventId) {
     // Adding a sub-task implies the parent event is actionable.
     $stmt = $pdo->prepare('UPDATE events SET requires_action = true, updated_at = now() WHERE id = :id');
@@ -68,7 +76,7 @@ try {
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute([
                     ':name' => $body['name'] ?? null,
-                    ':completed' => isset($body['completed']) ? (bool)$body['completed'] : null,
+                    ':completed' => isset($body['completed']) ? pg_bool($body['completed']) : null,
                     ':id' => $taskId,
                     ':event_id' => $eventId
                 ]);
@@ -140,7 +148,7 @@ try {
                 $stmt->execute([
                     ':event_id' => $eventId,
                     ':name' => $body['name'],
-                    ':completed' => isset($body['completed']) ? (bool)$body['completed'] : false,
+                    ':completed' => pg_bool(isset($body['completed']) ? $body['completed'] : false),
                     ':sort_order' => isset($body['sort_order']) ? (int)$body['sort_order'] : 0
                 ]);
                 $id = $stmt->fetchColumn();
@@ -234,10 +242,10 @@ try {
                     ':user_id' => $body['user_id'] ?? null,
                     ':source' => $body['source'] ?? null,
                     ':source_url' => $body['source_url'] ?? null,
-                    ':is_automatic' => isset($body['is_automatic']) ? (bool)$body['is_automatic'] : false,
-                    ':is_confirmed' => isset($body['is_confirmed']) ? (bool)$body['is_confirmed'] : false,
-                    ':requires_action' => isset($body['requires_action']) ? (bool)$body['requires_action'] : false,
-                    ':completed' => isset($body['completed']) ? (bool)$body['completed'] : false
+                    ':is_automatic' => pg_bool(isset($body['is_automatic']) ? $body['is_automatic'] : false),
+                    ':is_confirmed' => pg_bool(isset($body['is_confirmed']) ? $body['is_confirmed'] : false),
+                    ':requires_action' => pg_bool(isset($body['requires_action']) ? $body['requires_action'] : false),
+                    ':completed' => pg_bool(isset($body['completed']) ? $body['completed'] : false)
                 ]);
                 $id = $stmt->fetchColumn();
                 http_response_code(201);
@@ -289,8 +297,8 @@ try {
                         ':start_time' => isset($body['start_time']) ? ($start ? $start->format(DateTime::ATOM) : null) : null,
                         ':end_time' => isset($body['end_time']) ? ($end ? $end->format(DateTime::ATOM) : null) : null,
                         ':category' => $body['category'] ?? null,
-                        ':requires_action' => isset($body['requires_action']) ? (bool)$body['requires_action'] : false,
-                        ':completed' => isset($body['completed']) ? (bool)$body['completed'] : false,
+                        ':requires_action' => pg_bool(isset($body['requires_action']) ? $body['requires_action'] : false),
+                        ':completed' => pg_bool(isset($body['completed']) ? $body['completed'] : false),
                         ':id' => $eventId
                     ]);
                     echo json_encode(['status' => 'ok']);
