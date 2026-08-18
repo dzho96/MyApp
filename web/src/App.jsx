@@ -49,8 +49,6 @@ function formatDateTime(dateString) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(dateString))
 }
 
-// datetime-local inputs expect local wall-clock time (no timezone suffix).
-// Stored event times are UTC ISO strings, so convert before populating a form field.
 function toLocalInputValue(isoString) {
   if (!isoString) return ''
   const date = new Date(isoString)
@@ -96,7 +94,6 @@ function getDueTime(event) {
   return null
 }
 
-// An event with sub-tasks is only "done" for lane purposes once every sub-task is complete.
 function isEventComplete(event) {
   if (event.task_count > 0) return event.completed_task_count >= event.task_count
   return !!event.completed
@@ -123,9 +120,6 @@ function isUpcoming(event, now) {
   return due.getTime() >= now.getTime() && startOfDay(due).getTime() > startOfDay(now).getTime()
 }
 
-// Active Events: anything currently visible/ongoing, including informational
-// time-range events (e.g. a Genshin banner) that are not actionable and so
-// never appear in the Overdue/Today/Upcoming lanes.
 function isActiveEvent(event, now) {
   if (isEventComplete(event)) return false
   const start = event.start_time ? new Date(event.start_time) : null
@@ -459,6 +453,7 @@ function CollapsibleSection({ title, count, tone = 'neutral', emptyText, default
 }
 
 function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }) {
+  const hasSubtasks = event.task_count > 0
   return (
     <div style={{ ...categoryBorderStyle(event.category), background: 'var(--surface-muted)', borderRadius: 8, padding: 10, marginBottom: 8, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
       <button type="button" onClick={() => onEdit(event)} style={{ background: 'transparent', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', flex: 1 }}>
@@ -471,14 +466,25 @@ function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }
           {event.category || 'uncategorized'} &middot; {formatDateTime(event.end_time || event.start_time)}
         </div>
       </button>
-      {showMarkDone && event.requires_action && event.task_count === 0 && (
-        <button
-          type="button"
-          onClick={() => onToggleCompleted(event)}
-          style={{ border: '1px solid var(--border-default)', borderRadius: 6, background: event.completed ? 'var(--text-primary)' : 'var(--surface)', color: event.completed ? 'var(--surface)' : 'var(--text-primary)', padding: '4px 8px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
-        >
-          {event.completed ? 'Done' : 'Mark done'}
-        </button>
+      {showMarkDone && event.requires_action && (
+        hasSubtasks ? (
+          <button
+            type="button"
+            onClick={() => onEdit(event)}
+            title="This event has sub-tasks — open it to check them off"
+            style={{ border: '1px solid var(--border-default)', borderRadius: 6, background: 'var(--surface)', color: 'var(--text-secondary)', padding: '4px 8px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
+          >
+            Open checklist
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onToggleCompleted(event)}
+            style={{ border: '1px solid var(--border-default)', borderRadius: 6, background: event.completed ? 'var(--text-primary)' : 'var(--surface)', color: event.completed ? 'var(--surface)' : 'var(--text-primary)', padding: '4px 8px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
+          >
+            {event.completed ? 'Done' : 'Mark done'}
+          </button>
+        )
       )}
     </div>
   )
