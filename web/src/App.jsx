@@ -420,11 +420,6 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
       return
     }
 
-    // Add mode: creating the event plus its sub-tasks is treated as one
-    // all-or-nothing operation. If any sub-task fails to save, we roll back
-    // (delete the event and any sub-tasks that did succeed) rather than
-    // leave a partially-created event with some sub-tasks silently missing.
-    // The form stays open with everything you typed so you can retry.
     let newEventId = null
     const createdTaskIds = []
     try {
@@ -579,20 +574,46 @@ function CollapsibleSection({ title, count, tone = 'neutral', emptyText, default
   )
 }
 
-function DueLabel({ event, now }) {
-  const due = getDueTime(event)
-  if (!due) return <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No due date</span>
-  const overdue = event.requires_action && !isEventComplete(event) && due.getTime() < now.getTime()
+function OutstandingTasks({ eventId, taskCount }) {
+  const [tasks, setTasks] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!taskCount) return
+    setLoading(true)
+    fetchEventTasks(eventId)
+      .then((list) => setTasks(list))
+      .catch(() => setTasks([]))
+      .finally(() => setLoading(false))
+  }, [eventId, taskCount])
+
+  if (!taskCount) return null
+  if (loading || tasks === null) {
+    return <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Loading tasks...</div>
+  }
+
+  const outstanding = tasks.filter((t) => !t.completed)
+  if (outstanding.length === 0) {
+    return <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>All sub-tasks complete.</div>
+  }
+
   return (
-    <span style={{ fontSize: 12, fontWeight: overdue ? 700 : 400, color: overdue ? 'var(--danger-text)' : 'var(--text-secondary)' }}>
-      Due {formatDateTime(due.toISOString())}
-    </span>
+    <div style={{ marginTop: 6 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>Outstanding</div>
+      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {outstanding.map((task) => (
+          <li key={task.id} style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--text-muted)', flexShrink: 0 }} />
+            {task.name}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
 function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }) {
   const hasSubtasks = event.task_count > 0
-  const now = useMemo(() => new Date(), [event])
   return (
     <div style={{ ...categoryBorderStyle(event.category), background: 'var(--surface-muted)', borderRadius: 8, padding: 10, marginBottom: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
@@ -622,11 +643,22 @@ function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }
           )
         )}
       </div>
-      <button type="button" onClick={() => onEdit(event)} style={{ background: 'transparent', border: 'none', padding: 0, marginTop: 4, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{event.category || 'uncategorized'}</span>
+
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        <span style={{ textTransform: 'capitalize' }}>{event.category || 'uncategorized'}</span>
         <span style={{ color: 'var(--border-default)' }}>&middot;</span>
-        <DueLabel event={event} now={now} />
-      </button>
+        <span>Start: {formatDateTime(event.start_time)}</span>
+        <span style={{ color: 'var(--border-default)' }}>&middot;</span>
+        <span>End: {event.end_time ? formatDateTime(event.end_time) : 'Not set'}</span>
+      </div>
+
+      {event.description && (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+          {event.description}
+        </div>
+      )}
+
+      <OutstandingTasks eventId={event.id} taskCount={event.task_count} />
     </div>
   )
 }
