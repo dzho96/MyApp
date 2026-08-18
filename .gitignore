@@ -1,0 +1,9 @@
+node_modules/
+web/node_modules/
+mobile/node_modules/
+vendor/
+.env
+.DS_Store
+.vscode/
+.expo/
+/.idea/

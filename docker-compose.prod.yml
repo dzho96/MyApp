@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${DB_USER:-pti_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-pti_pass}
+      POSTGRES_DB: ${DB_NAME:-pti_db}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: pti-api:prod
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-pti_db}
+      DB_USER: ${DB_USER:-pti_user}
+      DB_PASS: ${DB_PASS:-pti_pass}
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    image: pti-web:prod
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  db_data:

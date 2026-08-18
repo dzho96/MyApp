@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: pti_user
+      POSTGRES_PASSWORD: pti_pass
+      POSTGRES_DB: pti_db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: pti-api:local
+    volumes:
+      - ./backend:/srv/backend:cached
+    working_dir: /srv/backend
+    command: php -S 0.0.0.0:8000 -t /srv/backend
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: pti_db
+      DB_USER: pti_user
+      DB_PASS: pti_pass
+    depends_on:
+      - db
+  worker:
+    image: pti-api:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    volumes:
+      - ./backend:/srv/backend:cached
+    command: sh -c "while true; do php /srv/backend/worker.php; sleep 60; done"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  db_data:
