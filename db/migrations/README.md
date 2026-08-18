@@ -30,14 +30,24 @@ This project runs Postgres via Docker Compose (service name `db`, database
    docker compose up -d db
    ```
 
-2. Pipe the migration file into `psql` inside the running container:
+2. Pipe the migration file into `psql` inside the running container.
 
-   ```
+   **macOS/Linux (bash/zsh):**
+
+   ```bash
    docker compose exec -T db psql -U pti_user -d pti_db < db/migrations/0001_actionable_events_and_subtasks.sql
    ```
 
-   `-T` disables pseudo-TTY allocation, which is required for piping a file
-   in through stdin on most shells.
+   **Windows (PowerShell):** PowerShell does not support the bash-style `<`
+   stdin redirect — it will raise `RedirectionNotSupported`. Use `Get-Content`
+   piped in instead:
+
+   ```powershell
+   Get-Content db/migrations/0001_actionable_events_and_subtasks.sql | docker compose exec -T db psql -U pti_user -d pti_db
+   ```
+
+   `-T` disables pseudo-TTY allocation, which is required for piping input
+   into the container on both platforms.
 
 3. Verify it applied cleanly — check for new columns/tables:
 
@@ -47,7 +57,7 @@ This project runs Postgres via Docker Compose (service name `db`, database
    ```
 
 If you're running Postgres outside Docker (e.g. a managed cloud instance),
-replace step 2 with a direct `psql` connection:
+connect directly with `psql`:
 
 ```
 psql -h <host> -U pti_user -d pti_db -f db/migrations/0001_actionable_events_and_subtasks.sql
@@ -57,8 +67,14 @@ psql -h <host> -U pti_user -d pti_db -f db/migrations/0001_actionable_events_and
 
 - **Back up first** if this is a database you care about:
 
-  ```
+  ```bash
   docker compose exec db pg_dump -U pti_user pti_db > backup_$(date +%Y%m%d_%H%M%S).sql
+  ```
+
+  PowerShell equivalent:
+
+  ```powershell
+  docker compose exec db pg_dump -U pti_user pti_db > "backup_$(Get-Date -Format yyyyMMdd_HHmmss).sql"
   ```
 
 - Check for data that might conflict with new constraints. For example,
@@ -76,17 +92,25 @@ psql -h <host> -U pti_user -d pti_db -f db/migrations/0001_actionable_events_and
 ## Applying All Migrations in Order (fresh or catching up)
 
 Run them in numeric order — each file is written to be safe to re-run
-(idempotent), so running an already-applied migration again is a no-op:
+(idempotent), so running an already-applied migration again is a no-op.
 
-```
+**macOS/Linux (bash/zsh):**
+
+```bash
 for f in db/migrations/*.sql; do
   echo "Applying $f..."
   docker compose exec -T db psql -U pti_user -d pti_db < "$f"
 done
 ```
 
-(On Windows PowerShell, use a `foreach` loop instead:
-`Get-ChildItem db/migrations/*.sql | ForEach-Object { Get-Content $_ | docker compose exec -T db psql -U pti_user -d pti_db }`)
+**Windows (PowerShell):**
+
+```powershell
+Get-ChildItem db/migrations/*.sql | Sort-Object Name | ForEach-Object {
+    Write-Host "Applying $($_.Name)..."
+    Get-Content $_.FullName | docker compose exec -T db psql -U pti_user -d pti_db
+}
+```
 
 ## Migration Log
 
