@@ -2,10 +2,12 @@ import React, { useCallback, useState } from 'react'
 import { View, ScrollView, RefreshControl, StyleSheet, Text } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { getDashboardLanes } from '../../../shared/eventLogic'
-import { fetchEvents, updateEvent } from '../api'
+import { fetchEvents, updateEvent, fetchAllReminders } from '../api'
+import { syncReminderNotifications } from '../notifications'
 import { useThemeMode } from '../theme'
 import CollapsibleSection from '../components/CollapsibleSection'
 import EventListCard from '../components/EventListCard'
+
 
 
 export default function DashboardScreen({ navigation }) {
@@ -15,16 +17,32 @@ export default function DashboardScreen({ navigation }) {
   const [errorMessage, setErrorMessage] = useState(null)
 
 
+
   const loadEvents = useCallback(async () => {
     try {
       const list = await fetchEvents()
       setEvents(list)
       setErrorMessage(null)
+
+
+
+      // Keep on-device notification schedule in sync with whatever
+      // reminders exist server-side. Runs on every focus + pull-to-refresh
+      // so completed/dismissed/deleted reminders don't leave stale local
+      // notifications behind, and newly created ones get scheduled even
+      // without a dedicated reminder-creation screen yet.
+      try {
+        const remindersWithEvents = await fetchAllReminders(list)
+        await syncReminderNotifications(remindersWithEvents)
+      } catch (syncErr) {
+        console.error('Failed to sync reminder notifications', syncErr)
+      }
     } catch (err) {
       console.error(err)
       setErrorMessage(err?.message || 'Failed to load events')
     }
   }, [])
+
 
 
   useFocusEffect(
@@ -34,11 +52,13 @@ export default function DashboardScreen({ navigation }) {
   )
 
 
+
   async function handleRefresh() {
     setRefreshing(true)
     await loadEvents()
     setRefreshing(false)
   }
+
 
 
   async function handleToggleCompleted(event) {
@@ -59,9 +79,11 @@ export default function DashboardScreen({ navigation }) {
   }
 
 
+
   function openEvent(event) {
     navigation.navigate('EventDetail', { eventId: event.id })
   }
+
 
 
   const now = new Date()
@@ -69,11 +91,13 @@ export default function DashboardScreen({ navigation }) {
   const previewCount = 4
 
 
+
   function renderLane(items) {
     return items.slice(0, previewCount).map((event) => (
       <EventListCard key={event.id} event={event} onPress={openEvent} onToggleCompleted={handleToggleCompleted} />
     ))
   }
+
 
 
   return (
@@ -102,6 +126,7 @@ export default function DashboardScreen({ navigation }) {
     </ScrollView>
   )
 }
+
 
 
 const styles = StyleSheet.create({
