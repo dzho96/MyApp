@@ -311,7 +311,7 @@ export default function EventDetailScreen({ route, navigation }) {
       )}
 
 
-      {isEdit && <ReminderSection eventId={eventId} colors={colors} />}
+      {isEdit && <ReminderSection eventId={eventId} startTime={startTime} colors={colors} />}
 
 
       <View style={styles.switchRow}>
@@ -400,9 +400,16 @@ export default function EventDetailScreen({ route, navigation }) {
 
 
 // --- Reminders ---
-function ReminderSection({ eventId, colors }) {
+const REMINDER_OFFSETS = [
+  { label: '10 min before', minutes: 10 },
+  { label: '30 min before', minutes: 30 },
+  { label: '1 hour before', minutes: 60 },
+  { label: '1 day before', minutes: 24 * 60 }
+]
+
+function ReminderSection({ eventId, startTime, colors }) {
   const [reminders, setReminders] = useState([])
-  const [showPicker, setShowPicker] = useState(false)
+  const [showCustomPicker, setShowCustomPicker] = useState(false)
   const [saving, setSaving] = useState(false)
 
   async function loadReminders() {
@@ -418,7 +425,28 @@ function ReminderSection({ eventId, colors }) {
     loadReminders()
   }, [eventId])
 
-  function openAddReminder() {
+  async function handleAddReminder(remindAt) {
+    if (remindAt.getTime() <= Date.now()) {
+      Alert.alert('Invalid time', 'Reminder time must be in the future')
+      return
+    }
+    setSaving(true)
+    try {
+      await createReminder(eventId, { remind_at: remindAt.toISOString() })
+      await loadReminders()
+    } catch (err) {
+      Alert.alert('Error', 'Failed to create reminder')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleOffsetPress(minutes) {
+    const remindAt = new Date(startTime.getTime() - minutes * 60 * 1000)
+    handleAddReminder(remindAt)
+  }
+
+  function openCustomPicker() {
     if (Platform.OS === 'android') {
       const now = new Date()
       DateTimePickerAndroid.open({
@@ -440,23 +468,7 @@ function ReminderSection({ eventId, colors }) {
         }
       })
     } else {
-      setShowPicker(true)
-    }
-  }
-
-  async function handleAddReminder(remindAt) {
-    if (remindAt.getTime() <= Date.now()) {
-      Alert.alert('Invalid time', 'Reminder time must be in the future')
-      return
-    }
-    setSaving(true)
-    try {
-      await createReminder(eventId, { remind_at: remindAt.toISOString() })
-      await loadReminders()
-    } catch (err) {
-      Alert.alert('Error', 'Failed to create reminder')
-    } finally {
-      setSaving(false)
+      setShowCustomPicker(true)
     }
   }
 
@@ -486,23 +498,36 @@ function ReminderSection({ eventId, colors }) {
         </View>
       ))}
 
+      <View style={styles.offsetRow}>
+        {REMINDER_OFFSETS.map((opt) => (
+          <TouchableOpacity
+            key={opt.minutes}
+            onPress={() => handleOffsetPress(opt.minutes)}
+            disabled={saving}
+            style={[styles.offsetChip, { borderColor: colors.borderDefault, backgroundColor: colors.surface, opacity: saving ? 0.6 : 1 }]}
+          >
+            <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{opt.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <TouchableOpacity
-        onPress={openAddReminder}
+        onPress={openCustomPicker}
         disabled={saving}
         style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, opacity: saving ? 0.6 : 1 }]}
       >
         <Text style={{ color: colors.accentPrimary, fontWeight: '600' }}>
-          {saving ? 'Adding…' : '+ Add reminder'}
+          {saving ? 'Adding…' : '+ Custom time'}
         </Text>
       </TouchableOpacity>
 
-      {Platform.OS === 'ios' && showPicker && (
+      {Platform.OS === 'ios' && showCustomPicker && (
         <DateTimePicker
           value={new Date(Date.now() + 15 * 60 * 1000)}
           mode="datetime"
           minimumDate={new Date()}
           onChange={(event, date) => {
-            setShowPicker(false)
+            setShowCustomPicker(false)
             if (event.type === 'set' && date) handleAddReminder(date)
           }}
         />
@@ -523,5 +548,7 @@ const styles = StyleSheet.create({
   taskInput: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 8 },
   addBtn: { borderRadius: 8, paddingHorizontal: 14, justifyContent: 'center' },
   saveBtn: { borderRadius: 8, padding: 12, marginBottom: 10 },
-  deleteBtn: { borderRadius: 8, padding: 12 }
+  deleteBtn: { borderRadius: 8, padding: 12 },
+  offsetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  offsetChip: { borderWidth: 1, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 }
 })
