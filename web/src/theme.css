@@ -1,0 +1,28 @@
+:root {
+  --category-personal: #ec4899;
+  --category-work: #3b82f6;
+  --category-games: #f59e0b;
+  --category-default: #94a3b8;
+
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --border-default: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  --accent-primary: #1d4ed8;
+  --accent-danger: #dc2626;
+  --danger-border: #fecaca;
+  --danger-text: #b91c1c;
+  --danger-bg: #fee2e2;
+}
+
+[data-theme='dark'] {
+  --surface: #0f172a;
+  --surface-muted: #1e293b;
+  --border-default: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+}

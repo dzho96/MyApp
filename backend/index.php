@@ -22,10 +22,141 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 const ALLOWED_CATEGORIES = ['personal', 'work', 'games'];
 
+function sync_event_requires_action($pdo, $eventId) {
+    // Adding a sub-task implies the parent event is actionable.
+    $stmt = $pdo->prepare('UPDATE events SET requires_action = true, updated_at = now() WHERE id = :id');
+    $stmt->execute([':id' => $eventId]);
+}
+
+function get_task_summary($pdo, $eventIds) {
+    if (empty($eventIds)) return [];
+    $placeholders = implode(',', array_fill(0, count($eventIds), '?'));
+    $stmt = $pdo->prepare("SELECT event_id, COUNT(*) AS total, SUM(CASE WHEN completed THEN 1 ELSE 0 END) AS done FROM event_tasks WHERE event_id IN ($placeholders) GROUP BY event_id");
+    $stmt->execute(array_values($eventIds));
+    $summary = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $summary[$row['event_id']] = ['total' => (int)$row['total'], 'done' => (int)$row['done']];
+    }
+    return $summary;
+}
+
 // Very small router for development.
 try {
     if ($path === '/api') {
         echo json_encode(['service' => 'Personal Time API', 'version' => '0.1']);
+        exit;
+    }
+
+    // ---- Sub-tasks: /api/events/{id}/tasks and /api/events/{id}/tasks/{taskId} ----
+    $taskMatches = [];
+    if (preg_match('#^/api/events/(\d+)/tasks/(\d+)$#', $path, $taskMatches)) {
+        $eventId = (int)$taskMatches[1];
+        $taskId = (int)$taskMatches[2];
+
+        if ($method === 'PUT') {
+            $body = json_decode(file_get_contents('php://input'), true);
+            $errors = [];
+            if (isset($body['name']) && strlen($body['name']) > 255) $errors[] = 'name: too long';
+            if (!empty($errors)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'validation_failed', 'details' => $errors]);
+                exit;
+            }
+            try {
+                $pdo = get_pdo();
+                $sql = 'UPDATE event_tasks SET name = COALESCE(:name, name), completed = COALESCE(:completed, completed), updated_at = now() WHERE id = :id AND event_id = :event_id';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    ':name' => $body['name'] ?? null,
+                    ':completed' => isset($body['completed']) ? (bool)$body['completed'] : null,
+                    ':id' => $taskId,
+                    ':event_id' => $eventId
+                ]);
+                echo json_encode(['status' => 'ok']);
+                exit;
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Update failed']);
+                exit;
+            }
+        }
+
+        if ($method === 'DELETE') {
+            try {
+                $pdo = get_pdo();
+                $stmt = $pdo->prepare('DELETE FROM event_tasks WHERE id = :id AND event_id = :event_id');
+                $stmt->execute([':id' => $taskId, ':event_id' => $eventId]);
+                echo json_encode(['status' => 'deleted']);
+                exit;
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Delete failed']);
+                exit;
+            }
+        }
+
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
+        exit;
+    }
+
+    $tasksListMatches = [];
+    if (preg_match('#^/api/events/(\d+)/tasks$#', $path, $tasksListMatches)) {
+        $eventId = (int)$tasksListMatches[1];
+
+        if ($method === 'GET') {
+            try {
+                $pdo = get_pdo();
+                $stmt = $pdo->prepare('SELECT id, event_id, name, completed, sort_order FROM event_tasks WHERE event_id = :event_id ORDER BY sort_order ASC, id ASC');
+                $stmt->execute([':event_id' => $eventId]);
+                $tasks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($tasks as &$task) {
+                    $task['completed'] = (bool)$task['completed'];
+                }
+                unset($task);
+            } catch (Exception $e) {
+                $tasks = [];
+            }
+            echo json_encode(['tasks' => $tasks]);
+            exit;
+        }
+
+        if ($method === 'POST') {
+            $body = json_decode(file_get_contents('php://input'), true);
+            if (!$body || empty($body['name'])) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Invalid payload: name is required']);
+                exit;
+            }
+            if (strlen($body['name']) > 255) {
+                http_response_code(400);
+                echo json_encode(['error' => 'validation_failed', 'details' => ['name: too long']]);
+                exit;
+            }
+            try {
+                $pdo = get_pdo();
+                $sql = 'INSERT INTO event_tasks (event_id, name, completed, sort_order) VALUES (:event_id, :name, :completed, :sort_order) RETURNING id';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    ':event_id' => $eventId,
+                    ':name' => $body['name'],
+                    ':completed' => isset($body['completed']) ? (bool)$body['completed'] : false,
+                    ':sort_order' => isset($body['sort_order']) ? (int)$body['sort_order'] : 0
+                ]);
+                $id = $stmt->fetchColumn();
+                sync_event_requires_action($pdo, $eventId);
+                http_response_code(201);
+                echo json_encode(['id' => $id]);
+                exit;
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Insert failed']);
+                exit;
+            }
+        }
+
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
 
@@ -45,6 +176,15 @@ try {
                 foreach ($events as &$event) {
                     $event['requires_action'] = (bool)$event['requires_action'];
                     $event['completed'] = (bool)$event['completed'];
+                }
+                unset($event);
+
+                $eventIds = array_map(fn($e) => $e['id'], $events);
+                $taskSummary = get_task_summary($pdo, $eventIds);
+                foreach ($events as &$event) {
+                    $summary = $taskSummary[$event['id']] ?? null;
+                    $event['task_count'] = $summary ? $summary['total'] : 0;
+                    $event['completed_task_count'] = $summary ? $summary['done'] : 0;
                 }
                 unset($event);
             } catch (Exception $e) {

@@ -32,6 +32,18 @@ created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
 updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+CREATE TABLE event_tasks (
+id SERIAL PRIMARY KEY,
+event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+name TEXT NOT NULL,
+completed BOOLEAN NOT NULL DEFAULT false,
+sort_order INTEGER NOT NULL DEFAULT 0,
+created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_tasks_event_id ON event_tasks (event_id);
+
 CREATE TABLE reminders (
 id SERIAL PRIMARY KEY,
 event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,

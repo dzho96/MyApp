@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
 import { fetchEvents, createEvent, updateEvent, deleteEvent } from './api'
+import { fetchEventTasks, createEventTask, updateEventTask, deleteEventTask } from './tasksApi'
 
 const CATEGORIES = ['personal', 'work', 'games']
 
 const sampleEvents = [
-  { id: 1, name: 'Team sync', description: 'Review project plan', category: 'work', start_time: new Date(new Date().setHours(9, 0, 0, 0)).toISOString(), end_time: new Date(new Date().setHours(10, 0, 0, 0)).toISOString(), requires_action: false, completed: false },
-  { id: 2, name: 'Assignment deadline', description: 'Submit coursework', category: 'work', start_time: new Date(new Date().setHours(17, 0, 0, 0)).toISOString(), end_time: new Date(new Date().setHours(17, 30, 0, 0)).toISOString(), requires_action: true, completed: false },
-  { id: 3, name: 'Genshin weekly reset', description: 'Daily/weekly reset', category: 'games', start_time: new Date(new Date().setDate(new Date().getDate() + 2)).toISOString(), end_time: new Date(new Date().setDate(new Date().getDate() + 2 + 1)).toISOString(), requires_action: false, completed: false },
-  { id: 4, name: 'Doctor appointment', description: 'Health checkup', category: 'personal', start_time: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString(), end_time: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString(), requires_action: true, completed: false }
+  { id: 1, name: 'Team sync', description: 'Review project plan', category: 'work', start_time: new Date(new Date().setHours(9, 0, 0, 0)).toISOString(), end_time: new Date(new Date().setHours(10, 0, 0, 0)).toISOString(), requires_action: false, completed: false, task_count: 0, completed_task_count: 0 },
+  { id: 2, name: 'Assignment deadline', description: 'Submit coursework', category: 'work', start_time: new Date(new Date().setHours(17, 0, 0, 0)).toISOString(), end_time: new Date(new Date().setHours(17, 30, 0, 0)).toISOString(), requires_action: true, completed: false, task_count: 3, completed_task_count: 1 },
+  { id: 3, name: 'Genshin weekly reset', description: 'Daily/weekly reset', category: 'games', start_time: new Date(new Date().setDate(new Date().getDate() + 2)).toISOString(), end_time: new Date(new Date().setDate(new Date().getDate() + 2 + 1)).toISOString(), requires_action: false, completed: false, task_count: 0, completed_task_count: 0 },
+  { id: 4, name: 'Doctor appointment', description: 'Health checkup', category: 'personal', start_time: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString(), end_time: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString(), requires_action: true, completed: false, task_count: 0, completed_task_count: 0 }
 ]
 
 function startOfDay(date) {
@@ -85,22 +86,28 @@ function getDueTime(event) {
   return null
 }
 
+// An event with sub-tasks is only "done" for lane purposes once every sub-task is complete.
+function isEventComplete(event) {
+  if (event.task_count > 0) return event.completed_task_count >= event.task_count
+  return !!event.completed
+}
+
 function isOverdue(event, now) {
-  if (!event.requires_action || event.completed) return false
+  if (!event.requires_action || isEventComplete(event)) return false
   const due = getDueTime(event)
   if (!due) return false
   return due.getTime() < now.getTime()
 }
 
 function isDueToday(event, now) {
-  if (!event.requires_action || event.completed) return false
+  if (!event.requires_action || isEventComplete(event)) return false
   const due = getDueTime(event)
   if (!due) return false
   return due.getTime() >= now.getTime() && startOfDay(due).getTime() === startOfDay(now).getTime()
 }
 
 function isUpcoming(event, now) {
-  if (!event.requires_action || event.completed) return false
+  if (!event.requires_action || isEventComplete(event)) return false
   const due = getDueTime(event)
   if (!due) return false
   return due.getTime() >= now.getTime() && startOfDay(due).getTime() > startOfDay(now).getTime()
@@ -110,7 +117,7 @@ function isUpcoming(event, now) {
 // time-range events (e.g. a Genshin banner) that are not actionable and so
 // never appear in the Overdue/Today/Upcoming lanes.
 function isActiveEvent(event, now) {
-  if (event.completed) return false
+  if (isEventComplete(event)) return false
   const start = event.start_time ? new Date(event.start_time) : null
   const end = event.end_time ? new Date(event.end_time) : null
   if (start && end) return start.getTime() <= now.getTime() && now.getTime() <= end.getTime()
@@ -139,11 +146,30 @@ function getDashboardLanes(eventsList, now) {
   return { overdue, today, upcoming, active }
 }
 
-function categoryColor(category) {
-  if (category === 'work') return '#dbeafe'
-  if (category === 'personal') return '#fce7f3'
-  if (category === 'games') return '#fef3c7'
-  return '#e2e8f0'
+function categoryVar(category) {
+  if (category === 'work') return 'var(--category-work)'
+  if (category === 'personal') return 'var(--category-personal)'
+  if (category === 'games') return 'var(--category-games)'
+  return 'var(--category-default)'
+}
+
+// Small colored dot for compact contexts (month-grid chips).
+function CategoryDot({ category }) {
+  return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: categoryVar(category), marginRight: 6, flexShrink: 0 }} />
+}
+
+// Left-border accent wrapper for cards/lists where more visual weight is appropriate.
+function categoryBorderStyle(category, extra = {}) {
+  return { borderLeft: `4px solid ${categoryVar(category)}`, ...extra }
+}
+
+function TaskBadge({ event }) {
+  if (!event.task_count) return null
+  return (
+    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', background: 'var(--surface-muted)', border: '1px solid var(--border-default)', borderRadius: 999, padding: '1px 8px', marginLeft: 6 }}>
+      {event.completed_task_count}/{event.task_count}
+    </span>
+  )
 }
 
 // ---------- Shared data/event hook ----------
@@ -191,22 +217,114 @@ function TopNav({ onAddEvent }) {
     borderRadius: 8,
     textDecoration: 'none',
     fontWeight: 600,
-    color: isActive ? '#fff' : '#0f172a',
-    background: isActive ? '#1d4ed8' : 'transparent'
+    color: isActive ? '#fff' : 'var(--text-primary)',
+    background: isActive ? 'var(--accent-primary)' : 'transparent'
   })
   return (
     <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0, fontSize: 22 }}>Schedule</h1>
+        <h1 style={{ margin: 0, fontSize: 22, color: 'var(--text-primary)' }}>Schedule</h1>
         <nav style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <NavLink to="/" end style={linkStyle}>Dashboard</NavLink>
           <NavLink to="/calendar" style={linkStyle}>Calendar</NavLink>
         </nav>
       </div>
-      <button type="button" onClick={onAddEvent} style={{ padding: '10px 16px', background: '#1d4ed8', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>
+      <button type="button" onClick={onAddEvent} style={{ padding: '10px 16px', background: 'var(--accent-primary)', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>
         + Add Event
       </button>
     </header>
+  )
+}
+
+// ---------- Sub-task checklist (inside the event modal only) ----------
+
+function TaskChecklist({ eventId, requiresAction }) {
+  const [tasks, setTasks] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [newTaskName, setNewTaskName] = useState('')
+
+  async function refresh() {
+    if (!eventId) return
+    setLoading(true)
+    try {
+      const list = await fetchEventTasks(eventId)
+      setTasks(list)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { refresh() }, [eventId])
+
+  async function handleAdd(e) {
+    e.preventDefault()
+    if (!newTaskName.trim()) return
+    try {
+      await createEventTask(eventId, { name: newTaskName.trim(), sort_order: tasks.length })
+      setNewTaskName('')
+      await refresh()
+    } catch (err) {
+      console.error(err)
+      alert('Failed to add sub-task')
+    }
+  }
+
+  async function handleToggle(task) {
+    try {
+      await updateEventTask(eventId, task.id, { completed: !task.completed })
+      await refresh()
+    } catch (err) {
+      console.error(err)
+      alert('Failed to update sub-task')
+    }
+  }
+
+  async function handleDelete(task) {
+    try {
+      await deleteEventTask(eventId, task.id)
+      await refresh()
+    } catch (err) {
+      console.error(err)
+      alert('Failed to delete sub-task')
+    }
+  }
+
+  if (!eventId) return null
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 12, marginTop: 4 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+        Sub-tasks {tasks.length > 0 && `(${tasks.filter((t) => t.completed).length}/${tasks.length})`}
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Loading...</div>
+      ) : (
+        <>
+          {tasks.map((task) => (
+            <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <input type="checkbox" checked={task.completed} onChange={() => handleToggle(task)} />
+              <span style={{ flex: 1, fontSize: 14, color: task.completed ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: task.completed ? 'line-through' : 'none' }}>{task.name}</span>
+              <button type="button" onClick={() => handleDelete(task)} aria-label="Remove sub-task" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>&times;</button>
+            </div>
+          ))}
+          {tasks.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>No sub-tasks yet.</div>}
+        </>
+      )}
+      <form onSubmit={handleAdd} style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <input
+          value={newTaskName}
+          onChange={(e) => setNewTaskName(e.target.value)}
+          placeholder="Add a sub-task"
+          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)' }}
+        />
+        <button type="submit" style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer' }}>Add</button>
+      </form>
+      {!requiresAction && tasks.length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Adding a sub-task marks this event as requiring action.</div>
+      )}
+    </div>
   )
 }
 
@@ -267,61 +385,61 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
 
   return (
     <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ background: 'var(--surface)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0 }}>{mode === 'edit' ? 'Edit event' : 'Add event'}</h3>
+          <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{mode === 'edit' ? 'Edit event' : 'Add event'}</h3>
           <button type="button" onClick={onClose} aria-label="Close" style={{ border: 'none', background: 'transparent', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>&times;</button>
         </div>
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 10 }}>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Event name" style={{ padding: 10, borderRadius: 8, border: '1px solid #cbd5e1' }} />
-          <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid #cbd5e1' }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Event name" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)' }} />
+          <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)' }}>
             <option value="">Select category</option>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid #cbd5e1' }} />
-          <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid #cbd5e1' }} />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#334155' }}>
+          <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)' }} />
+          <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)' }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
             <input type="checkbox" checked={requiresAction} onChange={(e) => setRequiresAction(e.target.checked)} />
             Requires action
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#334155' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
             <input type="checkbox" checked={completed} onChange={(e) => setCompleted(e.target.checked)} />
             Completed
           </label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" style={{ minHeight: 80, padding: 10, borderRadius: 8, border: '1px solid #cbd5e1' }} />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" style={{ minHeight: 80, padding: 10, borderRadius: 8, border: '1px solid var(--border-default)' }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            <button type="submit" style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 8, background: '#0f172a', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+            <button type="submit" style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer', fontWeight: 600 }}>Save</button>
             {mode === 'edit' && (
-              <button type="button" onClick={handleDelete} style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 8, background: '#dc2626', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Delete</button>
+              <button type="button" onClick={handleDelete} style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 8, background: 'var(--accent-danger)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Delete</button>
             )}
-            <button type="button" onClick={onClose} style={{ padding: '10px 16px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', cursor: 'pointer' }}>Cancel</button>
+            <button type="button" onClick={onClose} style={{ padding: '10px 16px', border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer' }}>Cancel</button>
           </div>
         </form>
+        {mode === 'edit' && initialEvent && (
+          <TaskChecklist eventId={initialEvent.id} requiresAction={requiresAction} />
+        )}
       </div>
     </div>
   )
 }
 
-// ---------- Collapsible dashboard section ----------
+// ---------- Generic collapsible section (used by Dashboard and Calendar sidebar) ----------
 
-function LaneSection({ title, items, tone, emptyText, defaultOpen, onEdit, onToggleCompleted, previewCount = 4 }) {
-  const [open, setOpen] = useState(defaultOpen && items.length > 0)
-  const [showAll, setShowAll] = useState(false)
+function CollapsibleSection({ title, count, tone = 'neutral', emptyText, defaultOpen, children, hasItems }) {
+  const [open, setOpen] = useState(defaultOpen && hasItems)
 
   useEffect(() => {
-    setOpen(defaultOpen && items.length > 0)
-  }, [items.length, defaultOpen])
+    setOpen(defaultOpen && hasItems)
+  }, [hasItems, defaultOpen])
 
   const toneStyles = {
-    danger: { border: '#fecaca', headerColor: '#b91c1c', badgeBg: '#fee2e2' },
-    neutral: { border: '#e2e8f0', headerColor: '#0f172a', badgeBg: '#f1f5f9' },
-    muted: { border: '#e2e8f0', headerColor: '#334155', badgeBg: '#f1f5f9' }
-  }[tone] || { border: '#e2e8f0', headerColor: '#0f172a', badgeBg: '#f1f5f9' }
-
-  const visibleItems = showAll ? items : items.slice(0, previewCount)
+    danger: { border: 'var(--danger-border)', headerColor: 'var(--danger-text)', badgeBg: 'var(--danger-bg)' },
+    neutral: { border: 'var(--border-default)', headerColor: 'var(--text-primary)', badgeBg: 'var(--surface-muted)' },
+    muted: { border: 'var(--border-default)', headerColor: 'var(--text-secondary)', badgeBg: 'var(--surface-muted)' }
+  }[tone] || { border: 'var(--border-default)', headerColor: 'var(--text-primary)', badgeBg: 'var(--surface-muted)' }
 
   return (
-    <section style={{ background: '#fff', border: `1px solid ${toneStyles.border}`, borderRadius: 12, marginBottom: 14, overflow: 'hidden' }}>
+    <section style={{ background: 'var(--surface)', border: `1px solid ${toneStyles.border}`, borderRadius: 12, marginBottom: 14, overflow: 'hidden' }}>
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -329,46 +447,42 @@ function LaneSection({ title, items, tone, emptyText, defaultOpen, onEdit, onTog
       >
         <span style={{ fontWeight: 700, fontSize: 16, color: toneStyles.headerColor }}>{title}</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ background: toneStyles.badgeBg, color: toneStyles.headerColor, borderRadius: 999, padding: '2px 10px', fontSize: 13, fontWeight: 700 }}>{items.length}</span>
-          <span style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', color: '#64748b' }}>&#9660;</span>
+          <span style={{ background: toneStyles.badgeBg, color: toneStyles.headerColor, borderRadius: 999, padding: '2px 10px', fontSize: 13, fontWeight: 700 }}>{count}</span>
+          <span style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', color: 'var(--text-muted)' }}>&#9660;</span>
         </span>
       </button>
       {open && (
         <div style={{ padding: '0 16px 16px' }}>
-          {items.length === 0 ? (
-            <div style={{ color: '#94a3b8', fontSize: 13 }}>{emptyText}</div>
-          ) : (
-            <>
-              {visibleItems.map((event) => (
-                <div key={event.id} style={{ background: '#f8fafc', borderRadius: 8, padding: 10, marginBottom: 8, border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                  <button type="button" onClick={() => onEdit(event)} style={{ background: 'transparent', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', flex: 1 }}>
-                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{event.name}</div>
-                    <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
-                      <span style={{ background: categoryColor(event.category), borderRadius: 6, padding: '2px 6px', marginRight: 6 }}>{event.category || 'uncategorized'}</span>
-                      {formatDateTime(event.end_time || event.start_time)}
-                    </div>
-                  </button>
-                  {event.requires_action && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleCompleted(event)}
-                      style={{ border: '1px solid #cbd5e1', borderRadius: 6, background: event.completed ? '#0f172a' : '#fff', color: event.completed ? '#fff' : '#0f172a', padding: '4px 8px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
-                    >
-                      {event.completed ? 'Done' : 'Mark done'}
-                    </button>
-                  )}
-                </div>
-              ))}
-              {items.length > previewCount && (
-                <button type="button" onClick={() => setShowAll((prev) => !prev)} style={{ border: 'none', background: 'transparent', color: '#1d4ed8', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0 }}>
-                  {showAll ? 'Show less' : `View all ${items.length}`}
-                </button>
-              )}
-            </>
-          )}
+          {hasItems ? children : <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{emptyText}</div>}
         </div>
       )}
     </section>
+  )
+}
+
+function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }) {
+  return (
+    <div style={{ ...categoryBorderStyle(event.category), background: 'var(--surface-muted)', borderRadius: 8, padding: 10, marginBottom: 8, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+      <button type="button" onClick={() => onEdit(event)} style={{ background: 'transparent', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', flex: 1 }}>
+        <div style={{ fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center' }}>
+          {event.name}
+          <TaskBadge event={event} />
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', alignItems: 'center' }}>
+          <CategoryDot category={event.category} />
+          {event.category || 'uncategorized'} &middot; {formatDateTime(event.end_time || event.start_time)}
+        </div>
+      </button>
+      {showMarkDone && event.requires_action && event.task_count === 0 && (
+        <button
+          type="button"
+          onClick={() => onToggleCompleted(event)}
+          style={{ border: '1px solid var(--border-default)', borderRadius: 6, background: event.completed ? 'var(--text-primary)' : 'var(--surface)', color: event.completed ? 'var(--surface)' : 'var(--text-primary)', padding: '4px 8px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
+        >
+          {event.completed ? 'Done' : 'Mark done'}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -377,47 +491,35 @@ function LaneSection({ title, items, tone, emptyText, defaultOpen, onEdit, onTog
 function DashboardPage({ events, loading, onEdit, onToggleCompleted }) {
   const now = useMemo(() => new Date(), [events])
   const lanes = useMemo(() => getDashboardLanes(events, now), [events, now])
+  const previewCount = 4
+
+  const renderLane = (items) => (
+    <>
+      {items.slice(0, previewCount).map((event) => (
+        <EventListCard key={event.id} event={event} onEdit={onEdit} onToggleCompleted={onToggleCompleted} />
+      ))}
+      {items.length > previewCount && (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>+{items.length - previewCount} more</div>
+      )}
+    </>
+  )
 
   if (loading) return <div>Loading dashboard...</div>
 
   return (
     <div>
-      <LaneSection
-        title="Overdue"
-        items={lanes.overdue}
-        tone="danger"
-        emptyText="Nothing overdue"
-        defaultOpen
-        onEdit={onEdit}
-        onToggleCompleted={onToggleCompleted}
-      />
-      <LaneSection
-        title="Today"
-        items={lanes.today}
-        tone="neutral"
-        emptyText="Nothing due today"
-        defaultOpen
-        onEdit={onEdit}
-        onToggleCompleted={onToggleCompleted}
-      />
-      <LaneSection
-        title="Upcoming"
-        items={lanes.upcoming}
-        tone="neutral"
-        emptyText="Nothing upcoming"
-        defaultOpen={false}
-        onEdit={onEdit}
-        onToggleCompleted={onToggleCompleted}
-      />
-      <LaneSection
-        title="Active Events"
-        items={lanes.active}
-        tone="muted"
-        emptyText="No active events"
-        defaultOpen={false}
-        onEdit={onEdit}
-        onToggleCompleted={onToggleCompleted}
-      />
+      <CollapsibleSection title="Overdue" count={lanes.overdue.length} tone="danger" emptyText="Nothing overdue" defaultOpen hasItems={lanes.overdue.length > 0}>
+        {renderLane(lanes.overdue)}
+      </CollapsibleSection>
+      <CollapsibleSection title="Today" count={lanes.today.length} tone="neutral" emptyText="Nothing due today" defaultOpen hasItems={lanes.today.length > 0}>
+        {renderLane(lanes.today)}
+      </CollapsibleSection>
+      <CollapsibleSection title="Upcoming" count={lanes.upcoming.length} tone="neutral" emptyText="Nothing upcoming" defaultOpen={false} hasItems={lanes.upcoming.length > 0}>
+        {renderLane(lanes.upcoming)}
+      </CollapsibleSection>
+      <CollapsibleSection title="Active Events" count={lanes.active.length} tone="muted" emptyText="No active events" defaultOpen={false} hasItems={lanes.active.length > 0}>
+        {renderLane(lanes.active)}
+      </CollapsibleSection>
     </div>
   )
 }
@@ -453,19 +555,21 @@ function CalendarPage({ events, loading, onEdit }) {
   const renderMonthView = () => (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8 }}>
       {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label) => (
-        <div key={label} style={{ textAlign: 'center', fontWeight: 700, color: '#475569', paddingBottom: 8 }}>{label}</div>
+        <div key={label} style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', paddingBottom: 8 }}>{label}</div>
       ))}
       {monthGrid.map((date) => {
         const isCurrentMonth = date.getMonth() === selectedDate.getMonth()
         const isSelected = startOfDay(date).getTime() === startOfDay(selectedDate).getTime()
         const dayEvents = events.filter((event) => eventMatchesDate(event, date))
         return (
-          <button key={date.toISOString()} onClick={() => setSelectedDate(date)} type="button" style={{ minHeight: 120, border: isSelected ? '2px solid #3b82f6' : '1px solid #e2e8f0', background: isCurrentMonth ? '#fff' : '#f8fafc', borderRadius: 10, padding: 8, textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontWeight: 700, color: isCurrentMonth ? '#0f172a' : '#94a3b8' }}>{formatDayNumber(date)}</span>
+          <button key={date.toISOString()} onClick={() => setSelectedDate(date)} type="button" style={{ minHeight: 120, border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border-default)', background: isCurrentMonth ? 'var(--surface)' : 'var(--surface-muted)', borderRadius: 10, padding: 8, textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontWeight: 700, color: isCurrentMonth ? 'var(--text-primary)' : 'var(--text-muted)' }}>{formatDayNumber(date)}</span>
             {dayEvents.slice(0, 2).map((event) => (
-              <span key={event.id} style={{ display: 'block', background: categoryColor(event.category), color: '#0f172a', borderRadius: 6, fontSize: 11, padding: '2px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.name}</span>
+              <span key={event.id} style={{ ...categoryBorderStyle(event.category), display: 'flex', alignItems: 'center', background: 'var(--surface-muted)', color: 'var(--text-primary)', borderRadius: 4, fontSize: 11, padding: '2px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {event.name}
+              </span>
             ))}
-            {dayEvents.length > 2 && <span style={{ fontSize: 11, color: '#475569' }}>+{dayEvents.length - 2} more</span>}
+            {dayEvents.length > 2 && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>+{dayEvents.length - 2} more</span>}
           </button>
         )
       })}
@@ -478,16 +582,15 @@ function CalendarPage({ events, loading, onEdit }) {
         const dayEvents = getVisibleDayEvents(events, date)
         const isSelected = startOfDay(date).getTime() === startOfDay(selectedDate).getTime()
         return (
-          <div key={date.toISOString()} style={{ border: isSelected ? '2px solid #3b82f6' : '1px solid #e2e8f0', borderRadius: 10, padding: 10, minHeight: 220, background: '#fff' }}>
+          <div key={date.toISOString()} style={{ border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border-default)', borderRadius: 10, padding: 10, minHeight: 220, background: 'var(--surface)' }}>
             <div style={{ textAlign: 'center', marginBottom: 10 }}>
-              <div style={{ fontWeight: 700 }}>{formatShortDay(date)}</div>
-              <div style={{ color: '#64748b' }}>{formatDayNumber(date)}</div>
+              <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatShortDay(date)}</div>
+              <div style={{ color: 'var(--text-secondary)' }}>{formatDayNumber(date)}</div>
             </div>
-            {dayEvents.length === 0 ? <div style={{ color: '#94a3b8', fontSize: 12 }}>No events</div> : dayEvents.map((event) => (
-              <button key={event.id} type="button" onClick={() => onEdit(event)} style={{ display: 'block', width: '100%', textAlign: 'left', background: '#f8fafc', borderRadius: 8, padding: 8, marginBottom: 8, border: 'none', cursor: 'pointer' }}>
-                <div style={{ fontWeight: 700 }}>{event.name}</div>
-                <div style={{ fontSize: 12, color: '#475569' }}>{event.category}</div>
-                <div style={{ fontSize: 12, color: '#475569' }}>{formatDateTime(event.start_time)}</div>
+            {dayEvents.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No events</div> : dayEvents.map((event) => (
+              <button key={event.id} type="button" onClick={() => onEdit(event)} style={{ ...categoryBorderStyle(event.category), display: 'block', width: '100%', textAlign: 'left', background: 'var(--surface-muted)', borderRadius: 6, padding: 8, marginBottom: 8, border: 'none', cursor: 'pointer' }}>
+                <div style={{ fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center' }}>{event.name}<TaskBadge event={event} /></div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatDateTime(event.start_time)}</div>
               </button>
             ))}
           </div>
@@ -497,15 +600,15 @@ function CalendarPage({ events, loading, onEdit }) {
   )
 
   const renderDayView = () => (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-      <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 12 }}>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border-default)', borderRadius: 12, padding: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 12, color: 'var(--text-primary)' }}>
         {new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(selectedDate)}
       </div>
-      {selectedDayEvents.length === 0 ? <div style={{ color: '#64748b' }}>No events scheduled for this day.</div> : selectedDayEvents.map((event) => (
-        <button key={event.id} type="button" onClick={() => onEdit(event)} style={{ display: 'block', width: '100%', textAlign: 'left', border: '1px solid #e2e8f0', borderRadius: 10, padding: 12, marginBottom: 10, background: '#fff', cursor: 'pointer' }}>
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>{event.name}</div>
-          <div style={{ color: '#475569', fontSize: 13 }}>{formatDateTime(event.start_time)} to {event.end_time ? formatDateTime(event.end_time) : 'End time not set'}</div>
-          {event.description && <div style={{ marginTop: 8, color: '#475569' }}>{event.description}</div>}
+      {selectedDayEvents.length === 0 ? <div style={{ color: 'var(--text-secondary)' }}>No events scheduled for this day.</div> : selectedDayEvents.map((event) => (
+        <button key={event.id} type="button" onClick={() => onEdit(event)} style={{ ...categoryBorderStyle(event.category), display: 'block', width: '100%', textAlign: 'left', borderTop: '1px solid var(--border-default)', borderRight: '1px solid var(--border-default)', borderBottom: '1px solid var(--border-default)', borderRadius: 8, padding: 12, marginBottom: 10, background: 'var(--surface)', cursor: 'pointer' }}>
+          <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--text-primary)', display: 'flex', alignItems: 'center' }}>{event.name}<TaskBadge event={event} /></div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{formatDateTime(event.start_time)} to {event.end_time ? formatDateTime(event.end_time) : 'End time not set'}</div>
+          {event.description && <div style={{ marginTop: 8, color: 'var(--text-secondary)' }}>{event.description}</div>}
         </button>
       ))}
     </div>
@@ -513,47 +616,62 @@ function CalendarPage({ events, loading, onEdit }) {
 
   return (
     <div>
-      <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+      <section style={{ background: 'var(--surface)', border: '1px solid var(--border-default)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => (view === 'month' ? changeMonth(-1) : view === 'week' ? changeWeek(-1) : changeDay(-1))} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 12px', cursor: 'pointer' }}>Prev</button>
-            <strong style={{ fontSize: 18 }}>
+            <button type="button" onClick={() => (view === 'month' ? changeMonth(-1) : view === 'week' ? changeWeek(-1) : changeDay(-1))} style={{ border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--surface)', padding: '8px 12px', cursor: 'pointer' }}>Prev</button>
+            <strong style={{ fontSize: 18, color: 'var(--text-primary)' }}>
               {view === 'month' ? formatMonth(selectedDate) : view === 'week' ? `Week of ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(weekDates[0])}` : new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(selectedDate)}
             </strong>
-            <button type="button" onClick={() => (view === 'month' ? changeMonth(1) : view === 'week' ? changeWeek(1) : changeDay(1))} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 12px', cursor: 'pointer' }}>Next</button>
+            <button type="button" onClick={() => (view === 'month' ? changeMonth(1) : view === 'week' ? changeWeek(1) : changeDay(1))} style={{ border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--surface)', padding: '8px 12px', cursor: 'pointer' }}>Next</button>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {['day', 'week', 'month'].map((option) => (
-              <button key={option} type="button" onClick={() => setView(option)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: view === option ? '#1d4ed8' : '#fff', color: view === option ? '#fff' : '#0f172a', cursor: 'pointer', textTransform: 'capitalize' }}>{option}</button>
+              <button key={option} type="button" onClick={() => setView(option)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border-default)', background: view === option ? 'var(--accent-primary)' : 'var(--surface)', color: view === option ? '#fff' : 'var(--text-primary)', cursor: 'pointer', textTransform: 'capitalize' }}>{option}</button>
             ))}
           </div>
         </div>
       </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2.2fr) minmax(260px, 0.8fr)', gap: 20 }}>
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border-default)', borderRadius: 12, padding: 16 }}>
           {loading ? <div>Loading schedule...</div> : (view === 'day' ? renderDayView() : view === 'week' ? renderWeekView() : renderMonthView())}
         </div>
 
-        <aside style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-          <h3 style={{ marginTop: 0 }}>{new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(selectedDate)}</h3>
-          {selectedDayEvents.length === 0 ? <div style={{ color: '#64748b' }}>No events for this date.</div> : selectedDayEvents.map((event) => (
-            <button key={event.id} type="button" onClick={() => onEdit(event)} style={{ width: '100%', border: '1px solid #dbeafe', background: '#fff', borderRadius: 8, padding: '10px 12px', marginBottom: 10, textAlign: 'left', cursor: 'pointer' }}>
-              <div style={{ fontWeight: 700 }}>{event.name}</div>
-              <div style={{ fontSize: 12, color: '#475569' }}>{event.category}</div>
-              <div style={{ fontSize: 12, color: '#475569' }}>{formatDateTime(event.start_time)}</div>
-            </button>
-          ))}
-
-          <div style={{ marginTop: 18 }}>
-            <h4 style={{ marginBottom: 8 }}>This month</h4>
-            {monthEvents.length === 0 ? <div style={{ color: '#64748b' }}>No events in this month.</div> : monthEvents.slice(0, 6).map((event) => (
-              <div key={event.id} style={{ fontSize: 13, marginBottom: 8 }}>
-                <strong>{event.name}</strong>
-                <div style={{ color: '#475569' }}>{formatDateTime(event.start_time)}</div>
-              </div>
+        <aside>
+          <CollapsibleSection
+            title={new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(selectedDate)}
+            count={selectedDayEvents.length}
+            tone="neutral"
+            emptyText="No events for this date."
+            defaultOpen
+            hasItems={selectedDayEvents.length > 0}
+          >
+            {selectedDayEvents.slice(0, 6).map((event) => (
+              <button key={event.id} type="button" onClick={() => onEdit(event)} style={{ ...categoryBorderStyle(event.category), width: '100%', background: 'var(--surface-muted)', border: 'none', borderRadius: 6, padding: '10px 12px', marginBottom: 8, textAlign: 'left', cursor: 'pointer' }}>
+                <div style={{ fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center' }}>{event.name}<TaskBadge event={event} /></div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatDateTime(event.start_time)}</div>
+              </button>
             ))}
-          </div>
+            {selectedDayEvents.length > 6 && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>+{selectedDayEvents.length - 6} more</div>}
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="This month"
+            count={monthEvents.length}
+            tone="muted"
+            emptyText="No events in this month."
+            defaultOpen={false}
+            hasItems={monthEvents.length > 0}
+          >
+            {monthEvents.slice(0, 8).map((event) => (
+              <button key={event.id} type="button" onClick={() => onEdit(event)} style={{ ...categoryBorderStyle(event.category), width: '100%', background: 'transparent', border: 'none', borderRadius: 4, padding: '6px 8px', marginBottom: 4, textAlign: 'left', cursor: 'pointer', fontSize: 13 }}>
+                <strong style={{ color: 'var(--text-primary)' }}>{event.name}</strong>
+                <div style={{ color: 'var(--text-secondary)' }}>{formatDateTime(event.start_time)}</div>
+              </button>
+            ))}
+            {monthEvents.length > 8 && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>+{monthEvents.length - 8} more</div>}
+          </CollapsibleSection>
         </aside>
       </div>
     </div>
@@ -579,7 +697,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ padding: 20, fontFamily: 'sans-serif', background: '#f8fafc', minHeight: '100vh' }}>
+    <div style={{ padding: 20, fontFamily: 'sans-serif', background: 'var(--surface-muted)', minHeight: '100vh' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <TopNav onAddEvent={openAddModal} />
 
