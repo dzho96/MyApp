@@ -49,6 +49,16 @@ function formatDateTime(dateString) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(dateString))
 }
 
+// datetime-local inputs expect local wall-clock time (no timezone suffix).
+// Stored event times are UTC ISO strings, so convert before populating a form field.
+function toLocalInputValue(isoString) {
+  if (!isoString) return ''
+  const date = new Date(isoString)
+  const offsetMs = date.getTimezoneOffset() * 60000
+  const local = new Date(date.getTime() - offsetMs)
+  return local.toISOString().slice(0, 16)
+}
+
 function eventMatchesDate(event, date) {
   if (!event.start_time) return false
   const eventDate = new Date(event.start_time)
@@ -153,12 +163,10 @@ function categoryVar(category) {
   return 'var(--category-default)'
 }
 
-// Small colored dot for compact contexts (month-grid chips).
 function CategoryDot({ category }) {
   return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: categoryVar(category), marginRight: 6, flexShrink: 0 }} />
 }
 
-// Left-border accent wrapper for cards/lists where more visual weight is appropriate.
 function categoryBorderStyle(category, extra = {}) {
   return { borderLeft: `4px solid ${categoryVar(category)}`, ...extra }
 }
@@ -171,8 +179,6 @@ function TaskBadge({ event }) {
     </span>
   )
 }
-
-// ---------- Shared data/event hook ----------
 
 function useEventsData() {
   const [events, setEvents] = useState([])
@@ -209,8 +215,6 @@ function useEventsData() {
   return { events, loading, refreshEvents, handleToggleCompleted }
 }
 
-// ---------- Top navigation ----------
-
 function TopNav({ onAddEvent }) {
   const linkStyle = ({ isActive }) => ({
     padding: '8px 14px',
@@ -235,8 +239,6 @@ function TopNav({ onAddEvent }) {
     </header>
   )
 }
-
-// ---------- Sub-task checklist (inside the event modal only) ----------
 
 function TaskChecklist({ eventId, requiresAction }) {
   const [tasks, setTasks] = useState([])
@@ -328,13 +330,11 @@ function TaskChecklist({ eventId, requiresAction }) {
   )
 }
 
-// ---------- Add/Edit Event modal ----------
-
 function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
   const [name, setName] = useState(initialEvent?.name || '')
   const [description, setDescription] = useState(initialEvent?.description || '')
-  const [startTime, setStartTime] = useState(initialEvent?.start_time ? new Date(initialEvent.start_time).toISOString().slice(0, 16) : '')
-  const [endTime, setEndTime] = useState(initialEvent?.end_time ? new Date(initialEvent.end_time).toISOString().slice(0, 16) : '')
+  const [startTime, setStartTime] = useState(toLocalInputValue(initialEvent?.start_time))
+  const [endTime, setEndTime] = useState(toLocalInputValue(initialEvent?.end_time))
   const [category, setCategory] = useState(initialEvent?.category || '')
   const [requiresAction, setRequiresAction] = useState(!!initialEvent?.requires_action)
   const [completed, setCompleted] = useState(!!initialEvent?.completed)
@@ -423,8 +423,6 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
   )
 }
 
-// ---------- Generic collapsible section (used by Dashboard and Calendar sidebar) ----------
-
 function CollapsibleSection({ title, count, tone = 'neutral', emptyText, defaultOpen, children, hasItems }) {
   const [open, setOpen] = useState(defaultOpen && hasItems)
 
@@ -486,8 +484,6 @@ function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }
   )
 }
 
-// ---------- Dashboard page ----------
-
 function DashboardPage({ events, loading, onEdit, onToggleCompleted }) {
   const now = useMemo(() => new Date(), [events])
   const lanes = useMemo(() => getDashboardLanes(events, now), [events, now])
@@ -523,8 +519,6 @@ function DashboardPage({ events, loading, onEdit, onToggleCompleted }) {
     </div>
   )
 }
-
-// ---------- Calendar page ----------
 
 function CalendarPage({ events, loading, onEdit }) {
   const [view, setView] = useState('month')
@@ -678,11 +672,9 @@ function CalendarPage({ events, loading, onEdit }) {
   )
 }
 
-// ---------- App root ----------
-
 export default function App() {
   const { events, loading, refreshEvents, handleToggleCompleted } = useEventsData()
-  const [modalState, setModalState] = useState(null) // null | { mode: 'add' | 'edit', event? }
+  const [modalState, setModalState] = useState(null)
 
   function openAddModal() {
     setModalState({ mode: 'add' })
