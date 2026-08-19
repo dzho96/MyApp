@@ -2,6 +2,7 @@
 header('Content-Type: application/json');
 
 
+
 // Basic CORS for local development. Adjust in production.
 if (isset($_SERVER['HTTP_ORIGIN'])) {
     header('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN']);
@@ -12,24 +13,30 @@ header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
 
+
 require_once __DIR__ . '/db.php';
+
 
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 
+
 const ALLOWED_CATEGORIES = ['personal', 'work', 'games'];
+
 
 
 function pg_bool($value) {
     return $value ? 'true' : 'false';
 }
+
 
 
 function to_iso8601($value) {
@@ -43,10 +50,12 @@ function to_iso8601($value) {
 }
 
 
+
 function sync_event_requires_action($pdo, $eventId) {
     $stmt = $pdo->prepare('UPDATE events SET requires_action = true, updated_at = now() WHERE id = :id');
     $stmt->execute([':id' => $eventId]);
 }
+
 
 
 function get_task_summary($pdo, $eventIds) {
@@ -62,6 +71,7 @@ function get_task_summary($pdo, $eventIds) {
 }
 
 
+
 try {
     if ($path === '/api') {
         echo json_encode(['service' => 'Personal Time API', 'version' => '0.1']);
@@ -69,10 +79,12 @@ try {
     }
 
 
+
     $taskMatches = [];
     if (preg_match('#^/api/events/(\d+)/tasks/(\d+)$#', $path, $taskMatches)) {
         $eventId = (int)$taskMatches[1];
         $taskId = (int)$taskMatches[2];
+
 
 
         if ($method === 'PUT') {
@@ -104,6 +116,7 @@ try {
         }
 
 
+
         if ($method === 'DELETE') {
             try {
                 $pdo = get_pdo();
@@ -119,15 +132,18 @@ try {
         }
 
 
+
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
 
 
+
     $tasksListMatches = [];
     if (preg_match('#^/api/events/(\d+)/tasks$#', $path, $tasksListMatches)) {
         $eventId = (int)$tasksListMatches[1];
+
 
 
         if ($method === 'GET') {
@@ -146,6 +162,7 @@ try {
             echo json_encode(['tasks' => $tasks]);
             exit;
         }
+
 
 
         if ($method === 'POST') {
@@ -183,16 +200,19 @@ try {
         }
 
 
+
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
 
 
+
     // ---- Reminders: /api/events/{id}/reminders, /api/reminders/{id}, /api/reminders/{id}/snooze ----
     $reminderListMatches = [];
     if (preg_match('#^/api/events/(\d+)/reminders$#', $path, $reminderListMatches)) {
         $eventId = (int)$reminderListMatches[1];
+
 
         if ($method === 'GET') {
             try {
@@ -213,6 +233,7 @@ try {
             echo json_encode(['reminders' => $reminders]);
             exit;
         }
+
 
         if ($method === 'POST') {
             $body = json_decode(file_get_contents('php://input'), true);
@@ -251,14 +272,17 @@ try {
             }
         }
 
+
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
 
+
     $reminderSnoozeMatches = [];
     if (preg_match('#^/api/reminders/(\d+)/snooze$#', $path, $reminderSnoozeMatches)) {
         $reminderId = (int)$reminderSnoozeMatches[1];
+
 
         if ($method === 'POST') {
             $body = json_decode(file_get_contents('php://input'), true);
@@ -290,9 +314,11 @@ try {
                     $newTime->modify("+{$minutes} minutes");
                 }
 
+
                 $pdo->beginTransaction();
                 $updateStmt = $pdo->prepare('UPDATE reminders SET dismissed = true, updated_at = now() WHERE id = :id');
                 $updateStmt->execute([':id' => $reminderId]);
+
 
                 $insertStmt = $pdo->prepare('INSERT INTO reminders (event_id, remind_at, method, snoozed_from_id) VALUES (:event_id, :remind_at, :method, :snoozed_from_id) RETURNING id');
                 $insertStmt->execute([
@@ -303,6 +329,7 @@ try {
                 ]);
                 $newId = $insertStmt->fetchColumn();
                 $pdo->commit();
+
 
                 http_response_code(201);
                 echo json_encode(['id' => $newId, 'remind_at' => $newTime->format(DateTime::ATOM)]);
@@ -315,14 +342,17 @@ try {
             }
         }
 
+
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
 
+
     $reminderMatches = [];
     if (preg_match('#^/api/reminders/(\d+)$#', $path, $reminderMatches)) {
         $reminderId = (int)$reminderMatches[1];
+
 
         if ($method === 'PUT') {
             $body = json_decode(file_get_contents('php://input'), true);
@@ -359,11 +389,117 @@ try {
             }
         }
 
+
         if ($method === 'DELETE') {
             try {
                 $pdo = get_pdo();
                 $stmt = $pdo->prepare('DELETE FROM reminders WHERE id = :id');
                 $stmt->execute([':id' => $reminderId]);
+                echo json_encode(['status' => 'deleted']);
+                exit;
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Delete failed']);
+                exit;
+            }
+        }
+
+
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
+        exit;
+    }
+
+
+    // ---- Recurrence: /api/events/{id}/recurrence, /api/events/{id}/occurrences ----
+    // Recurrence rules are stored as a small JSON object in recurring_events.rrule
+    // (e.g. {"frequency":"weekly","interval":1,"until":"2026-12-31","count":null})
+    // rather than full RFC 5545 RRULE syntax, since the mobile UI only needs a
+    // handful of simple patterns and this keeps encode/decode trivial on both ends.
+    $recurrenceMatches = [];
+    if (preg_match('#^/api/events/(\d+)/recurrence$#', $path, $recurrenceMatches)) {
+        $eventId = (int)$recurrenceMatches[1];
+
+        if ($method === 'GET') {
+            try {
+                $pdo = get_pdo();
+                $stmt = $pdo->prepare('SELECT id, event_id, rrule, created_at FROM recurring_events WHERE event_id = :event_id LIMIT 1');
+                $stmt->execute([':event_id' => $eventId]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$row) {
+                    echo json_encode(['recurrence' => null]);
+                    exit;
+                }
+                $rule = json_decode($row['rrule'], true);
+                echo json_encode(['recurrence' => [
+                    'id' => $row['id'],
+                    'event_id' => $row['event_id'],
+                    'frequency' => $rule['frequency'] ?? null,
+                    'interval' => $rule['interval'] ?? 1,
+                    'until' => $rule['until'] ?? null,
+                    'count' => $rule['count'] ?? null
+                ]]);
+                exit;
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Fetch failed']);
+                exit;
+            }
+        }
+
+        if ($method === 'POST') {
+            $body = json_decode(file_get_contents('php://input'), true);
+            $allowedFrequencies = ['daily', 'weekly', 'monthly'];
+            $errors = [];
+            if (!$body || empty($body['frequency']) || !in_array($body['frequency'], $allowedFrequencies, true)) {
+                $errors[] = 'frequency: must be one of ' . implode(', ', $allowedFrequencies);
+            }
+            $interval = isset($body['interval']) ? (int)$body['interval'] : 1;
+            if ($interval < 1) $errors[] = 'interval: must be at least 1';
+            $until = null;
+            if (!empty($body['until'])) {
+                try { $until = new DateTime($body['until']); } catch (Exception $e) { $errors[] = 'until: invalid format'; }
+            }
+            $count = isset($body['count']) ? (int)$body['count'] : null;
+            if ($count !== null && $count < 1) $errors[] = 'count: must be at least 1';
+            if (!empty($errors)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'validation_failed', 'details' => $errors]);
+                exit;
+            }
+
+            $ruleJson = json_encode([
+                'frequency' => $body['frequency'],
+                'interval' => $interval,
+                'until' => $until ? $until->format('Y-m-d') : null,
+                'count' => $count
+            ]);
+
+            try {
+                $pdo = get_pdo();
+                // One recurrence rule per event: replace any existing rule
+                // rather than accumulating duplicates.
+                $del = $pdo->prepare('DELETE FROM recurring_events WHERE event_id = :event_id');
+                $del->execute([':event_id' => $eventId]);
+
+                $stmt = $pdo->prepare('INSERT INTO recurring_events (event_id, rrule) VALUES (:event_id, :rrule) RETURNING id');
+                $stmt->execute([':event_id' => $eventId, ':rrule' => $ruleJson]);
+                $id = $stmt->fetchColumn();
+                http_response_code(201);
+                echo json_encode(['id' => $id]);
+                exit;
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Insert failed']);
+                exit;
+            }
+        }
+
+        if ($method === 'DELETE') {
+            try {
+                $pdo = get_pdo();
+                $stmt = $pdo->prepare('DELETE FROM recurring_events WHERE event_id = :event_id');
+                $stmt->execute([':event_id' => $eventId]);
                 echo json_encode(['status' => 'deleted']);
                 exit;
             } catch (Exception $e) {
@@ -379,8 +515,93 @@ try {
     }
 
 
+    // Expands a recurrence rule into concrete occurrence start/end
+    // datetimes for display (e.g. on the calendar). Caps at 100 occurrences
+    // as a safety limit against rules with no 'until'/'count' bound, or
+    // an accidentally huge range.
+    $occurrenceMatches = [];
+    if (preg_match('#^/api/events/(\d+)/occurrences$#', $path, $occurrenceMatches)) {
+        $eventId = (int)$occurrenceMatches[1];
+
+        if ($method === 'GET') {
+            try {
+                $pdo = get_pdo();
+                $eventStmt = $pdo->prepare('SELECT id, name, start_time, end_time FROM events WHERE id = :id');
+                $eventStmt->execute([':id' => $eventId]);
+                $event = $eventStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$event || !$event['start_time']) {
+                    echo json_encode(['occurrences' => []]);
+                    exit;
+                }
+
+                $ruleStmt = $pdo->prepare('SELECT rrule FROM recurring_events WHERE event_id = :event_id LIMIT 1');
+                $ruleStmt->execute([':event_id' => $eventId]);
+                $ruleRow = $ruleStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$ruleRow) {
+                    echo json_encode(['occurrences' => []]);
+                    exit;
+                }
+                $rule = json_decode($ruleRow['rrule'], true);
+
+                $start = new DateTime($event['start_time']);
+                $end = $event['end_time'] ? new DateTime($event['end_time']) : null;
+                $durationSeconds = $end ? ($end->getTimestamp() - $start->getTimestamp()) : null;
+
+                $interval = max(1, (int)($rule['interval'] ?? 1));
+                $until = !empty($rule['until']) ? new DateTime($rule['until'] . ' 23:59:59') : null;
+                $count = $rule['count'] ?? null;
+                $maxOccurrences = 100;
+                $limit = $count ? min((int)$count, $maxOccurrences) : $maxOccurrences;
+
+                $stepSpec = null;
+                switch ($rule['frequency'] ?? '') {
+                    case 'daily':
+                        $stepSpec = "+{$interval} day";
+                        break;
+                    case 'weekly':
+                        $stepSpec = "+{$interval} week";
+                        break;
+                    case 'monthly':
+                        $stepSpec = "+{$interval} month";
+                        break;
+                    default:
+                        echo json_encode(['occurrences' => []]);
+                        exit;
+                }
+
+                $occurrences = [];
+                $cursor = clone $start;
+                for ($i = 0; $i < $limit; $i++) {
+                    if ($until && $cursor > $until) break;
+                    $occurrenceEnd = $durationSeconds !== null
+                        ? (clone $cursor)->modify("+{$durationSeconds} seconds")
+                        : null;
+                    $occurrences[] = [
+                        'start_time' => $cursor->format(DateTime::ATOM),
+                        'end_time' => $occurrenceEnd ? $occurrenceEnd->format(DateTime::ATOM) : null
+                    ];
+                    $cursor = (clone $cursor)->modify($stepSpec);
+                }
+
+                echo json_encode(['occurrences' => $occurrences]);
+                exit;
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Occurrence expansion failed']);
+                exit;
+            }
+        }
+
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
+        exit;
+    }
+
+
+
     if (strpos($path, '/api/events') === 0) {
         $matches = [];
+
 
 
         if ($method === 'GET') {
@@ -397,6 +618,7 @@ try {
                 unset($event);
 
 
+
                 $eventIds = array_map(fn($e) => $e['id'], $events);
                 $taskSummary = get_task_summary($pdo, $eventIds);
                 foreach ($events as &$event) {
@@ -411,6 +633,7 @@ try {
             echo json_encode(['events' => $events]);
             exit;
         }
+
 
 
         if ($method === 'POST') {
@@ -469,8 +692,10 @@ try {
         }
 
 
+
         if (preg_match('#^/api/events/(\d+)$#', $path, $matches)) {
             $eventId = (int)$matches[1];
+
 
 
             if ($method === 'PUT') {
@@ -522,6 +747,7 @@ try {
             }
 
 
+
             if ($method === 'DELETE') {
                 try {
                     $pdo = get_pdo();
@@ -538,10 +764,12 @@ try {
         }
 
 
+
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
+
 
 
     http_response_code(404);
