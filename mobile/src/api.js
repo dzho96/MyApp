@@ -101,3 +101,37 @@ export async function fetchAllReminders(events) {
   )
   return results.flat()
 }
+
+
+export async function fetchRecurrence(eventId) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/recurrence`)
+  if (!res.ok) throw new Error('Failed to fetch recurrence')
+  const data = await res.json()
+  return data.recurrence || null
+}
+
+
+export async function setRecurrence(eventId, payload) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/recurrence`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  if (!res.ok) throw new Error('Failed to set recurrence')
+  return res.json()
+}
+
+
+export async function deleteRecurrence(eventId) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/recurrence`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to delete recurrence')
+  return res.json()
+}
+
+
+export async function fetchOccurrences(eventId) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/occurrences`)
+  if (!res.ok) throw new Error('Failed to fetch occurrences')
+  const data = await res.json()
+  return data.occurrences || []
+}

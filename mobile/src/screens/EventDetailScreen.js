@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet,
 import { Picker } from '@react-native-picker/picker'
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker'
 import { CATEGORIES } from '../../../shared/eventLogic'
-import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchReminders, createReminder, deleteReminder } from '../api'
+import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchReminders, createReminder, deleteReminder, fetchRecurrence, setRecurrence, deleteRecurrence } from '../api'
 import { fetchEventTasks, createEventTask, updateEventTask, deleteEventTask } from '../tasksApi'
 import { useThemeMode } from '../theme'
 
@@ -311,6 +311,9 @@ export default function EventDetailScreen({ route, navigation }) {
       )}
 
 
+      {isEdit && <RecurrenceSection eventId={eventId} colors={colors} />}
+
+
       {isEdit && <ReminderSection eventId={eventId} startTime={startTime} endTime={endTime} colors={colors} />}
 
 
@@ -395,6 +398,209 @@ export default function EventDetailScreen({ route, navigation }) {
         </TouchableOpacity>
       )}
     </ScrollView>
+  )
+}
+
+
+// --- Recurrence ---
+const FREQUENCIES = [
+  { label: 'Daily', value: 'daily' },
+  { label: 'Weekly', value: 'weekly' },
+  { label: 'Monthly', value: 'monthly' }
+]
+
+function RecurrenceSection({ eventId, colors }) {
+  const [loading, setLoading] = useState(true)
+  const [enabled, setEnabled] = useState(false)
+  const [frequency, setFrequency] = useState('weekly')
+  const [interval, setIntervalValue] = useState('1')
+  const [endMode, setEndMode] = useState('never')
+  const [untilDate, setUntilDate] = useState(null)
+  const [count, setCount] = useState('10')
+  const [showUntilPicker, setShowUntilPicker] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    fetchRecurrence(eventId)
+      .then((rule) => {
+        if (rule) {
+          setEnabled(true)
+          setFrequency(rule.frequency || 'weekly')
+          setIntervalValue(String(rule.interval || 1))
+          if (rule.until) {
+            setEndMode('until')
+            setUntilDate(new Date(rule.until))
+          } else if (rule.count) {
+            setEndMode('count')
+            setCount(String(rule.count))
+          } else {
+            setEndMode('never')
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [eventId])
+
+  async function handleToggleEnabled(next) {
+    setEnabled(next)
+    if (!next) {
+      setSaving(true)
+      try {
+        await deleteRecurrence(eventId)
+      } catch (err) {
+        Alert.alert('Error', 'Failed to remove recurrence')
+      } finally {
+        setSaving(false)
+      }
+    }
+  }
+
+  function openUntilPicker() {
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: untilDate || new Date(),
+        mode: 'date',
+        minimumDate: new Date(),
+        onChange: (event, date) => {
+          if (event.type === 'set' && date) setUntilDate(date)
+        }
+      })
+    } else {
+      setShowUntilPicker(true)
+    }
+  }
+
+  async function handleSaveRecurrence() {
+    const intervalNum = parseInt(interval, 10)
+    if (!intervalNum || intervalNum < 1) {
+      Alert.alert('Invalid interval', 'Repeat interval must be at least 1')
+      return
+    }
+    if (endMode === 'until' && !untilDate) {
+      Alert.alert('Missing end date', 'Pick an end date or choose a different end condition')
+      return
+    }
+    const countNum = endMode === 'count' ? parseInt(count, 10) : null
+    if (endMode === 'count' && (!countNum || countNum < 1)) {
+      Alert.alert('Invalid count', 'Number of occurrences must be at least 1')
+      return
+    }
+
+    setSaving(true)
+    try {
+      await setRecurrence(eventId, {
+        frequency,
+        interval: intervalNum,
+        until: endMode === 'until' && untilDate ? untilDate.toISOString().slice(0, 10) : null,
+        count: countNum
+      })
+      Alert.alert('Saved', 'Recurrence rule updated')
+    } catch (err) {
+      Alert.alert('Error', 'Failed to save recurrence')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return null
+
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <View style={styles.switchRow}>
+        <Text style={{ color: colors.textSecondary }}>Repeats</Text>
+        <Switch value={enabled} onValueChange={handleToggleEnabled} disabled={saving} />
+      </View>
+
+      {enabled && (
+        <>
+          <View style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, padding: 0 }]}>
+            <Picker selectedValue={frequency} onValueChange={setFrequency} style={{ color: colors.textPrimary }}>
+              {FREQUENCIES.map((f) => <Picker.Item key={f.value} label={f.label} value={f.value} />)}
+            </Picker>
+          </View>
+
+          <View style={styles.customOffsetRow}>
+            <Text style={{ color: colors.textSecondary }}>Every</Text>
+            <TextInput
+              value={interval}
+              onChangeText={setIntervalValue}
+              keyboardType="numeric"
+              style={[styles.offsetAmountInput, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
+            />
+            <Text style={{ color: colors.textSecondary }}>
+              {frequency === 'daily' ? 'day(s)' : frequency === 'weekly' ? 'week(s)' : 'month(s)'}
+            </Text>
+          </View>
+
+          <View style={styles.anchorRow}>
+            {[
+              { label: 'Never ends', value: 'never' },
+              { label: 'Until date', value: 'until' },
+              { label: 'Count', value: 'count' }
+            ].map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                onPress={() => setEndMode(opt.value)}
+                style={[
+                  styles.anchorChip,
+                  { borderColor: colors.borderDefault, backgroundColor: endMode === opt.value ? colors.accentPrimary : colors.surface }
+                ]}
+              >
+                <Text style={{ color: endMode === opt.value ? colors.surface : colors.textPrimary, fontWeight: '600', fontSize: 12 }}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {endMode === 'until' && (
+            <TouchableOpacity
+              onPress={openUntilPicker}
+              style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}
+            >
+              <Text style={{ color: colors.textPrimary }}>
+                {untilDate ? `Ends: ${untilDate.toLocaleDateString()}` : 'Pick end date'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {Platform.OS === 'ios' && showUntilPicker && (
+            <DateTimePicker
+              value={untilDate || new Date()}
+              mode="date"
+              minimumDate={new Date()}
+              onChange={(event, date) => {
+                setShowUntilPicker(false)
+                if (event.type === 'set' && date) setUntilDate(date)
+              }}
+            />
+          )}
+
+          {endMode === 'count' && (
+            <View style={styles.customOffsetRow}>
+              <Text style={{ color: colors.textSecondary }}>Stop after</Text>
+              <TextInput
+                value={count}
+                onChangeText={setCount}
+                keyboardType="numeric"
+                style={[styles.offsetAmountInput, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
+              />
+              <Text style={{ color: colors.textSecondary }}>occurrences</Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            onPress={handleSaveRecurrence}
+            disabled={saving}
+            style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, opacity: saving ? 0.6 : 1 }]}
+          >
+            <Text style={{ color: colors.accentPrimary, fontWeight: '600' }}>
+              {saving ? 'Saving…' : 'Save repeat rule'}
+            </Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
   )
 }
 
