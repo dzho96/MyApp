@@ -495,7 +495,8 @@ export default function EventDetailScreen({ route, navigation }) {
 const RECURRENCE_UNITS = [
   { label: 'day(s)', value: 'daily' },
   { label: 'week(s)', value: 'weekly' },
-  { label: 'month(s)', value: 'monthly' }
+  { label: 'month(s)', value: 'monthly' },
+  { label: 'year(s)', value: 'yearly' }
 ]
 
 
@@ -734,6 +735,11 @@ const REMINDER_OFFSETS = [
 
 
 
+// Note: reminders intentionally do NOT include a "months"/"years" style
+// long-range unit set beyond what's already here — a reminder is a single
+// offset before one specific occurrence, not a repeating schedule, so
+// yearly-scale offsets don't make sense here even though they do for
+// Repeats above.
 const OFFSET_UNITS = [
   { label: 'minutes', minutesPerUnit: 1 },
   { label: 'hours', minutesPerUnit: 60 },
