@@ -752,6 +752,7 @@ function RecurrenceSection({ eventId }) {
               <option value="daily">day(s)</option>
               <option value="weekly">week(s)</option>
               <option value="monthly">month(s)</option>
+              <option value="yearly">year(s)</option>
             </select>
           </div>
           <button
@@ -863,6 +864,28 @@ function EventModal({ mode, initialEvent, initialDraft, onClose, onSaved, onDele
       }
 
 
+      // Auto-chain: if this event was created from a Quick Add draft that
+      // detected recurrence, save the recurrence rule immediately — no
+      // separate manual "open Repeats" step, ever. byDay is intentionally
+      // NOT sent (setRecurrence has no such field); it's absorbed naturally
+      // since start_time is already anchored to the correct weekday by the
+      // parser. Failure here is non-fatal: the event itself still exists,
+      // the user just needs to set Repeats manually as a fallback.
+      if (initialDraft?.recurrence && newEventId) {
+        try {
+          await setRecurrence(newEventId, {
+            frequency: initialDraft.recurrence.type,
+            interval: initialDraft.recurrence.interval || 1,
+            until: initialDraft.recurrence.until || null,
+            count: null
+          })
+        } catch (recurrenceErr) {
+          console.error(recurrenceErr)
+          alert('Event was created, but the recurrence rule could not be saved automatically. Open the event and set Repeats manually.')
+        }
+      }
+
+
       await onSaved()
       onClose()
     } catch (err) {
@@ -911,7 +934,7 @@ function EventModal({ mode, initialEvent, initialDraft, onClose, onSaved, onDele
           <div style={{ border: '1px solid var(--border-default)', borderRadius: 8, padding: 10, marginBottom: 10, background: 'var(--surface-muted)' }}>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               Pre-filled from Quick Add — review before saving.
-              {initialDraft.recurrence && ' Recurrence detected but not set yet; use "Repeats" below after saving.'}
+              {initialDraft.recurrence && ' Recurrence will be saved automatically when you save this event.'}
             </div>
             <button type="button" onClick={() => setShowDraftNote(false)} style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
               Dismiss
