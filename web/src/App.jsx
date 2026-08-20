@@ -13,6 +13,7 @@ import {
   deleteRecurrence
 } from './api'
 import { fetchEventTasks, createEventTask, updateEventTask, deleteEventTask } from './tasksApi'
+import QuickAddBubble from './components/QuickAddBubble'
 
 
 const CATEGORIES = ['personal', 'work', 'games']
@@ -768,18 +769,23 @@ function RecurrenceSection({ eventId }) {
 }
 
 
-function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
-  const [name, setName] = useState(initialEvent?.name || '')
+function EventModal({ mode, initialEvent, initialDraft, onClose, onSaved, onDeleted }) {
+  const [name, setName] = useState(initialEvent?.name || initialDraft?.name || '')
   const [description, setDescription] = useState(initialEvent?.description || '')
   const [startTime, setStartTime] = useState(
-    mode === 'edit' ? toLocalInputValue(initialEvent?.start_time) : toLocalInputValue(new Date().toISOString())
+    mode === 'edit'
+      ? toLocalInputValue(initialEvent?.start_time)
+      : (initialDraft?.startTime || toLocalInputValue(new Date().toISOString()))
   )
-  const [endTime, setEndTime] = useState(toLocalInputValue(initialEvent?.end_time))
+  const [endTime, setEndTime] = useState(
+    mode === 'edit' ? toLocalInputValue(initialEvent?.end_time) : (initialDraft?.endTime || '')
+  )
   const [category, setCategory] = useState(initialEvent?.category || '')
   const [requiresAction, setRequiresAction] = useState(!!initialEvent?.requires_action)
   const [completed, setCompleted] = useState(!!initialEvent?.completed)
   const [draftTasks, setDraftTasks] = useState([])
   const [newDraftTaskName, setNewDraftTaskName] = useState('')
+  const [showDraftNote, setShowDraftNote] = useState(!!initialDraft)
 
 
   function handleAddDraftTask(e) {
@@ -899,6 +905,21 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
           <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{mode === 'edit' ? 'Edit event' : 'Add event'}</h3>
           <button type="button" onClick={onClose} aria-label="Close" style={{ border: 'none', background: 'transparent', fontSize: 20, cursor: 'pointer', lineHeight: 1, color: 'var(--text-primary)' }}>&times;</button>
         </div>
+
+
+        {showDraftNote && initialDraft && (
+          <div style={{ border: '1px solid var(--border-default)', borderRadius: 8, padding: 10, marginBottom: 10, background: 'var(--surface-muted)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              Pre-filled from Quick Add — review before saving.
+              {initialDraft.recurrence && ' Recurrence detected but not set yet; use "Repeats" below after saving.'}
+            </div>
+            <button type="button" onClick={() => setShowDraftNote(false)} style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
+
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 10 }}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Event name" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
           <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}>
@@ -1333,6 +1354,11 @@ export default function App() {
   }
 
 
+  function handleQuickAddParsed(draft) {
+    setModalState({ mode: 'add', draft })
+  }
+
+
   return (
     <div style={{ padding: 20, fontFamily: 'sans-serif', background: 'var(--surface-muted)', minHeight: '100vh' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -1349,11 +1375,15 @@ export default function App() {
           <EventModal
             mode={modalState.mode}
             initialEvent={modalState.event}
+            initialDraft={modalState.draft}
             onClose={closeModal}
             onSaved={refreshEvents}
             onDeleted={refreshEvents}
           />
         )}
+
+
+        <QuickAddBubble onParsed={handleQuickAddParsed} />
       </div>
     </div>
   )
