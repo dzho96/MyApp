@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react'
 import { View, ScrollView, RefreshControl, StyleSheet, Text } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { getDashboardLanes } from '../../../shared/eventLogic'
-import { fetchEvents, updateEvent, fetchAllReminders } from '../api'
+import { fetchEventsWithOccurrences, updateEvent, fetchAllReminders } from '../api'
 import { syncReminderNotifications } from '../notifications'
 import { useThemeMode } from '../theme'
 import CollapsibleSection from '../components/CollapsibleSection'
@@ -20,7 +20,7 @@ export default function DashboardScreen({ navigation }) {
 
   const loadEvents = useCallback(async () => {
     try {
-      const list = await fetchEvents()
+      const list = await fetchEventsWithOccurrences()
       setEvents(list)
       setErrorMessage(null)
 
@@ -32,7 +32,12 @@ export default function DashboardScreen({ navigation }) {
       // notifications behind, and newly created ones get scheduled even
       // without a dedicated reminder-creation screen yet.
       try {
-        const remindersWithEvents = await fetchAllReminders(list)
+        // Occurrences of a recurring event share the same id and the
+        // same reminders, so dedupe by id before fetching reminders —
+        // otherwise a weekly event with 20 occurrences would trigger 20x
+        // redundant reminder fetches/schedules for the same rows.
+        const uniqueEvents = Array.from(new Map(list.map((e) => [e.id, e])).values())
+        const remindersWithEvents = await fetchAllReminders(uniqueEvents)
         await syncReminderNotifications(remindersWithEvents)
       } catch (syncErr) {
         console.error('Failed to sync reminder notifications', syncErr)
@@ -94,7 +99,7 @@ export default function DashboardScreen({ navigation }) {
 
   function renderLane(items) {
     return items.slice(0, previewCount).map((event) => (
-      <EventListCard key={event.id} event={event} onPress={openEvent} onToggleCompleted={handleToggleCompleted} />
+      <EventListCard key={event.occurrenceKey || event.id} event={event} onPress={openEvent} onToggleCompleted={handleToggleCompleted} />
     ))
   }
 

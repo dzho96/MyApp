@@ -135,3 +135,52 @@ export async function fetchOccurrences(eventId) {
   const data = await res.json()
   return data.occurrences || []
 }
+
+
+// Expands recurring events into virtual occurrence copies for calendar/
+// dashboard display. Each virtual occurrence keeps the SAME event id as
+// its base event (so tapping any instance opens the one real, editable
+// event — no separate "occurrence" entity, no special-casing in
+// EventDetailScreen). Non-recurring events pass through unchanged.
+//
+// occurrenceKey is added for React list keys only (since id is shared
+// across all instances of a recurring event) and is NOT sent to the
+// backend or used for navigation.
+export async function fetchEventsWithOccurrences() {
+  const events = await fetchEvents()
+
+  const expansions = await Promise.all(
+    events.map(async (event) => {
+      let recurrence = null
+      try {
+        recurrence = await fetchRecurrence(event.id)
+      } catch (err) {
+        recurrence = null
+      }
+      if (!recurrence || !recurrence.frequency) {
+        return [{ ...event, occurrenceKey: `${event.id}-base`, isRecurringInstance: false }]
+      }
+
+      let occurrences = []
+      try {
+        occurrences = await fetchOccurrences(event.id)
+      } catch (err) {
+        occurrences = []
+      }
+      if (occurrences.length === 0) {
+        return [{ ...event, occurrenceKey: `${event.id}-base`, isRecurringInstance: false }]
+      }
+
+      return occurrences.map((occ, index) => ({
+        ...event,
+        start_time: occ.start_time,
+        end_time: occ.end_time,
+        occurrenceKey: `${event.id}-occ-${index}`,
+        isRecurringInstance: true,
+        occurrenceIndex: index
+      }))
+    })
+  )
+
+  return expansions.flat()
+}
