@@ -6,6 +6,7 @@ import { CATEGORIES } from '../../../shared/eventLogic'
 import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchReminders, createReminder, deleteReminder, fetchRecurrence, setRecurrence, deleteRecurrence } from '../api'
 import { fetchEventTasks, createEventTask, updateEventTask, deleteEventTask } from '../tasksApi'
 import { useThemeMode } from '../theme'
+import FormSection from '../components/FormSection'
 
 
 export default function EventDetailScreen({ route, navigation }) {
@@ -311,12 +312,6 @@ export default function EventDetailScreen({ route, navigation }) {
       )}
 
 
-      {isEdit && <RecurrenceSection eventId={eventId} colors={colors} />}
-
-
-      {isEdit && <ReminderSection eventId={eventId} startTime={startTime} endTime={endTime} colors={colors} />}
-
-
       <View style={styles.switchRow}>
         <Text style={{ color: colors.textSecondary }}>Requires action</Text>
         <Switch value={requiresAction} onValueChange={setRequiresAction} />
@@ -341,50 +336,60 @@ export default function EventDetailScreen({ route, navigation }) {
       />
 
 
-      <Text style={{ fontWeight: '700', fontSize: 13, color: colors.textSecondary, marginBottom: 8, marginTop: 8 }}>
-        Sub-tasks {isEdit ? `(${tasks.filter((t) => t.completed).length}/${tasks.length})` : (draftTasks.length > 0 ? `(${draftTasks.length})` : '')}
-      </Text>
-
-
-      {isEdit ? (
-        tasks.map((task) => (
-          <View key={task.id} style={styles.taskRow}>
-            <Switch value={task.completed} onValueChange={() => handleToggleTask(task)} />
-            <Text style={{ flex: 1, color: colors.textPrimary, marginLeft: 8, textDecorationLine: task.completed ? 'line-through' : 'none' }}>
-              {task.name}
-            </Text>
-            <TouchableOpacity onPress={() => handleDeleteTask(task)}>
-              <Text style={{ color: colors.textMuted, fontSize: 18 }}>×</Text>
-            </TouchableOpacity>
-          </View>
-        ))
-      ) : (
-        draftTasks.map((taskName, index) => (
-          <View key={`${taskName}-${index}`} style={styles.taskRow}>
-            <Text style={{ flex: 1, color: colors.textPrimary }}>{taskName}</Text>
-            <TouchableOpacity onPress={() => removeDraftTask(index)}>
-              <Text style={{ color: colors.textMuted, fontSize: 18 }}>×</Text>
-            </TouchableOpacity>
-          </View>
-        ))
+      {isEdit && (
+        <FormSection title="Repeats" subtitle="Make this a recurring event" defaultOpen={false}>
+          <RecurrenceSection eventId={eventId} colors={colors} />
+        </FormSection>
       )}
 
 
-      <View style={styles.addTaskRow}>
-        <TextInput
-          value={newDraftTaskName}
-          onChangeText={setNewDraftTaskName}
-          placeholder="Add a sub-task"
-          placeholderTextColor={colors.textMuted}
-          style={[styles.taskInput, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
-        />
-        <TouchableOpacity
-          onPress={isEdit ? handleAddExistingTask : addDraftTask}
-          style={[styles.addBtn, { backgroundColor: colors.textPrimary }]}
-        >
-          <Text style={{ color: colors.surface, fontWeight: '700' }}>Add</Text>
-        </TouchableOpacity>
-      </View>
+      {isEdit && (
+        <FormSection title="Reminders" subtitle="Get notified before this event" defaultOpen={false}>
+          <ReminderSection eventId={eventId} startTime={startTime} endTime={endTime} colors={colors} />
+        </FormSection>
+      )}
+
+
+      <FormSection title="Sub-tasks" subtitle={isEdit ? `${tasks.filter((t) => t.completed).length}/${tasks.length} complete` : (draftTasks.length > 0 ? `${draftTasks.length} added` : null)}>
+        {isEdit ? (
+          tasks.map((task) => (
+            <View key={task.id} style={styles.taskRow}>
+              <Switch value={task.completed} onValueChange={() => handleToggleTask(task)} />
+              <Text style={{ flex: 1, color: colors.textPrimary, marginLeft: 8, textDecorationLine: task.completed ? 'line-through' : 'none' }}>
+                {task.name}
+              </Text>
+              <TouchableOpacity onPress={() => handleDeleteTask(task)}>
+                <Text style={{ color: colors.textMuted, fontSize: 18 }}>×</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        ) : (
+          draftTasks.map((taskName, index) => (
+            <View key={`${taskName}-${index}`} style={styles.taskRow}>
+              <Text style={{ flex: 1, color: colors.textPrimary }}>{taskName}</Text>
+              <TouchableOpacity onPress={() => removeDraftTask(index)}>
+                <Text style={{ color: colors.textMuted, fontSize: 18 }}>×</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
+
+        <View style={styles.addTaskRow}>
+          <TextInput
+            value={newDraftTaskName}
+            onChangeText={setNewDraftTaskName}
+            placeholder="Add a sub-task"
+            placeholderTextColor={colors.textMuted}
+            style={[styles.taskInput, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
+          />
+          <TouchableOpacity
+            onPress={isEdit ? handleAddExistingTask : addDraftTask}
+            style={[styles.addBtn, { backgroundColor: colors.textPrimary }]}
+          >
+            <Text style={{ color: colors.surface, fontWeight: '700' }}>Add</Text>
+          </TouchableOpacity>
+        </View>
+      </FormSection>
 
 
       <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, { backgroundColor: colors.textPrimary }]}>
@@ -509,9 +514,9 @@ function RecurrenceSection({ eventId, colors }) {
   if (loading) return null
 
   return (
-    <View style={{ marginBottom: 16 }}>
+    <View>
       <View style={styles.switchRow}>
-        <Text style={{ color: colors.textSecondary }}>Repeats</Text>
+        <Text style={{ color: colors.textSecondary }}>Enable</Text>
         <Switch value={enabled} onValueChange={handleToggleEnabled} disabled={saving} />
       </View>
 
@@ -715,11 +720,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
   }
 
   return (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontWeight: '700', fontSize: 13, color: colors.textSecondary, marginBottom: 8 }}>
-        Reminders {reminders.length > 0 ? `(${reminders.length})` : ''}
-      </Text>
-
+    <View>
       {reminders.map((reminder) => (
         <View key={reminder.id} style={styles.taskRow}>
           <Text style={{ flex: 1, color: colors.textPrimary }}>
@@ -839,7 +840,7 @@ const styles = StyleSheet.create({
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   taskRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  addTaskRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  addTaskRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   taskInput: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 8 },
   addBtn: { borderRadius: 8, paddingHorizontal: 14, justifyContent: 'center' },
   saveBtn: { borderRadius: 8, padding: 12, marginBottom: 10 },
