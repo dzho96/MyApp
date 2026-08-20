@@ -1,4 +1,4 @@
-# Quick Run Steps
+# Web + Backend Setup (Local Development)
 
 Minimal steps to get the project running locally (recommended: Docker).
 
@@ -44,7 +44,7 @@ Visit the Vite dev URL (typically http://localhost:5173) and the API at http://l
 
 Notes
 - If you do not have PHP with `pdo_pgsql` available inside the `api` container, run `php migrate.php` on a machine with PHP + `pdo_pgsql` configured, or install the extension in the container before running migrations.
-- For mobile testing with a physical device, update the `VITE_API_BASE` or use your PC's local IP address so the device can reach the backend.
+- For mobile testing with a physical device, update the `VITE_API_BASE` or use your PC's local IP address so the device can reach the backend. See `docs/SETUP_MOBILE.md` for the mobile-specific equivalent of this.
 
 Production deploy (Docker Compose)
 
@@ -68,4 +68,3 @@ docker compose -f docker-compose.prod.yml exec api php migrate.php
 ```
 
 The web UI will be available on port 80 by default.
-

@@ -20,7 +20,8 @@ Overview
 --------
 
 The repository contains a small PHP backend (simple REST API), a React
-web client (Vite), and notes for a React Native mobile app (Expo).
+web client (Vite), and a React Native mobile app (Expo) — see
+`docs/SETUP_MOBILE.md` for the mobile app specifically.
 
 Prerequisites
 -------------
@@ -124,17 +125,19 @@ Configuration
 Mobile development (Expo)
 -------------------------
 
-The `mobile/README.md` contains notes. To create and run an Expo app:
+See `docs/SETUP_MOBILE.md` for full instructions (installing dependencies,
+configuring the API base URL for a physical device, running via Expo Go,
+and troubleshooting). Quick version:
 
 ```bash
 cd mobile
-npx create-expo-app .
 npm install
-npx expo start
+npm start
 ```
 
 When testing on a physical device, ensure the mobile app can reach the
-backend API by using your machine's LAN IP address instead of `localhost`.
+backend API by using your machine's LAN IP address instead of `localhost`
+(set via `EXPO_PUBLIC_API_BASE` in `mobile/.env` — see `docs/SETUP_MOBILE.md`).
 
 Backend API reference
 ---------------------
@@ -146,7 +149,7 @@ Endpoints
 - GET /api — service info
 
 - GET /api/events
-  - Response: { events: [ { id, name, description, start_time, end_time, category } ] }
+  - Response: { events: [ { id, name, description, start_time, end_time, category, requires_action, completed, task_count, completed_task_count } ] }
 
 - POST /api/events
   - Request JSON body (example):
@@ -155,17 +158,33 @@ Endpoints
       "description": "Optional",
       "start_time": "2026-08-13T12:00:00Z",  // ISO 8601 or null
       "end_time": "2026-08-13T14:00:00Z",    // ISO 8601 or null
-      "category": "work"
+      "category": "personal" | "work" | "games",
+      "requires_action": false,
+      "completed": false
     }
   - Responses:
     - 201: { id: <new id> }
-    - 400: validation errors (missing name, invalid datetime, start> end)
+    - 400: validation errors (missing name, invalid datetime, start > end, invalid category)
 
 - PUT /api/events/{id}
   - Body similar to POST; updates the event. Returns 200 on success.
 
 - DELETE /api/events/{id}
   - Deletes the event. Returns 200 with { status: 'deleted' } on success.
+
+- GET /api/events/{id}/tasks
+  - Response: { tasks: [ { id, event_id, name, completed, sort_order } ] }
+
+- POST /api/events/{id}/tasks
+  - Request JSON body: { "name": "Sub-task name", "sort_order": 0 }
+  - Adding a sub-task automatically sets the parent event's requires_action to true.
+  - Responses: 201: { id: <new task id> }
+
+- PUT /api/events/{id}/tasks/{taskId}
+  - Body: { "name"?: string, "completed"?: boolean } — partial updates supported.
+
+- DELETE /api/events/{id}/tasks/{taskId}
+  - Deletes the sub-task.
 
 Examples (curl)
 
@@ -174,20 +193,27 @@ Examples (curl)
 curl http://localhost:8000/api/events
 
 # Create event
-curl -X POST http://localhost:8000/api/events -H "Content-Type: application/json" -d '{"name":"Demo","start_time":"2026-08-13T12:00:00Z"}'
+curl -X POST http://localhost:8000/api/events -H "Content-Type: application/json" -d '{"name":"Demo","start_time":"2026-08-13T12:00:00Z","category":"work"}'
 
 # Update event id 1
 curl -X PUT http://localhost:8000/api/events/1 -H "Content-Type: application/json" -d '{"name":"Updated"}'
 
 # Delete id 1
 curl -X DELETE http://localhost:8000/api/events/1
+
+# Add a sub-task to event 1
+curl -X POST http://localhost:8000/api/events/1/tasks -H "Content-Type: application/json" -d '{"name":"Sub-task"}'
 ```
 
 Database & migrations
 ---------------------
 
-- Schema is in `db/schema.sql` and is applied by `backend/migrate.php`.
-- The migration script uses PDO to connect to Postgres using the usual
+- Base schema is in `db/schema.sql`.
+- Incremental changes to an existing database live in `db/migrations/` —
+  see `db/migrations/README.md` for the naming convention and exact
+  commands to apply them (Docker-based, with Windows PowerShell
+  equivalents).
+- The migration script(s) use PDO to connect to Postgres using the usual
   environment variables (`DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`).
 
 Troubleshooting
@@ -200,7 +226,15 @@ Troubleshooting
 - Docker port conflicts: if port 5432 or 8000 is already in use, stop
   the conflicting service or change the ports in `docker-compose.yml`.
 - Web client cannot reach API from device: use your machine's LAN IP or
-  set up a tunnel with Expo for mobile testing.
+  set up a tunnel with Expo for mobile testing — see `docs/SETUP_MOBILE.md`.
+- "connection to server at 127.0.0.1 ... failed" from the backend
+  container: this means `DB_HOST` isn't reaching the `db` service by name.
+  Recreate the backend container (`docker compose up -d --force-recreate`)
+  so it picks up the `DB_HOST=db` environment variable from `docker-compose.yml`.
+- SQLSTATE errors mentioning boolean/empty-string parameters when saving
+  an event: this was a known PDO/pgsql boolean-binding issue, fixed by
+  routing all boolean values through a `pg_bool()` helper in
+  `backend/index.php` before binding them to prepared statements.
 
 Contributing
 ------------

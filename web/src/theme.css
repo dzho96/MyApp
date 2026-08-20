@@ -1,0 +1,50 @@
+:root,
+[data-mode='light'] {
+  --category-personal: #ec4899;
+  --category-work: #3b82f6;
+  --category-games: #f59e0b;
+  --category-default: #94a3b8;
+
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --border-default: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  --accent-primary: #1d4ed8;
+  --accent-danger: #dc2626;
+  --danger-border: #fecaca;
+  --danger-text: #b91c1c;
+  --danger-bg: #fee2e2;
+
+  --modal-overlay: rgba(15, 23, 42, 0.45);
+}
+
+[data-mode='dark'] {
+  --category-personal: #f472b6;
+  --category-work: #60a5fa;
+  --category-games: #fbbf24;
+  --category-default: #64748b;
+
+  --surface: #1e293b;
+  --surface-muted: #0f172a;
+  --border-default: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+
+  --accent-primary: #3b82f6;
+  --accent-danger: #ef4444;
+  --danger-border: #7f1d1d;
+  --danger-text: #fca5a5;
+  --danger-bg: #450a0a;
+
+  --modal-overlay: rgba(0, 0, 0, 0.6);
+}
+
+body {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}

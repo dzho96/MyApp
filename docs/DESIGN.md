@@ -78,7 +78,7 @@ database.
 
 The eventual architecture is expected to look like:
 
-    ┌──────────────────────────────┐
+    ┌──────────────────────────┐
     │        Cloud Backend        │
     │                             │
     │  PHP API                   │
@@ -86,11 +86,11 @@ The eventual architecture is expected to look like:
     │  Scheduled Jobs            │
     │  Game Data Importers       │
     │  Reminder Processing       │
-    └──────────────┬──────────────┘
+    └────────────┬────────────┘
                    │
                   API
                    │
-          ┌────────┴─────────┐
+          ┌────────┬─────────┐
           │                  │
     ┌─────▼─────┐      ┌─────▼─────┐
     │  Mobile   │      │  Web/PC   │
@@ -174,13 +174,13 @@ Example:
     GOOD AFTERNOON
 
     TODAY
-    ─────────────────────────
+    ───────────────────────
     Genshin event       3h 12m
     Assignment          Tomorrow
     Daily reset         13h 17m
 
     UPCOMING
-    ─────────────────────────
+    ───────────────────────
     Weekly reset        Tomorrow
     Genshin event       15 Aug
 
@@ -295,16 +295,16 @@ Example:
     Genshin Impact
 
     Events
-    ─────────────────────
+    ─────────────────
     Event A          3h remaining
     Event B          2 days
 
     Banners
-    ─────────────────────
+    ─────────────────
     Character A      4 days
 
     Resets
-    ─────────────────────
+    ─────────────────
     Daily            13h
     Weekly           3 days
 
@@ -653,7 +653,7 @@ An initial database could contain tables such as:
 A simplified event structure could include:
 
     events
-    ─────────────────────
+    ─────────────────
     id
     game_id
     name
