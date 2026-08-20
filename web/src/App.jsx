@@ -416,7 +416,32 @@ function TaskChecklist({ eventId, requiresAction }) {
 function ReminderSection({ eventId, startTime, endTime }) {
   const [reminders, setReminders] = useState([])
   const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState('quick')
+  const [anchor, setAnchor] = useState('start')
+  const [offsetAmount, setOffsetAmount] = useState('15')
+  const [offsetUnit, setOffsetUnit] = useState('minutes')
   const [customValue, setCustomValue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+
+  const OFFSET_PRESETS = [
+    { label: '10 min', minutes: 10 },
+    { label: '30 min', minutes: 30 },
+    { label: '1 hour', minutes: 60 },
+    { label: '1 day', minutes: 24 * 60 }
+  ]
+
+
+  const OFFSET_UNITS = [
+    { label: 'minutes', minutesPerUnit: 1 },
+    { label: 'hours', minutesPerUnit: 60 },
+    { label: 'days', minutesPerUnit: 24 * 60 },
+    { label: 'weeks', minutesPerUnit: 7 * 24 * 60 },
+    { label: 'months', minutesPerUnit: 30 * 24 * 60 }
+  ]
+
+
+  const anchorTime = anchor === 'end' && endTime ? new Date(endTime) : (startTime ? new Date(startTime) : new Date())
 
 
   async function refresh() {
@@ -435,46 +460,50 @@ function ReminderSection({ eventId, startTime, endTime }) {
   useEffect(() => { refresh() }, [eventId])
 
 
-  const OFFSETS = [
-    { label: '10 min before', minutes: 10 },
-    { label: '30 min before', minutes: 30 },
-    { label: '1 hour before', minutes: 60 },
-    { label: '1 day before', minutes: 24 * 60 }
-  ]
-
-
-  async function handleAddOffset(minutes) {
-    const anchor = startTime ? new Date(startTime) : new Date()
-    const remindAt = new Date(anchor.getTime() - minutes * 60 * 1000)
+  async function addReminder(remindAt) {
     if (remindAt.getTime() <= Date.now()) {
       alert('Reminder time must be in the future')
       return
     }
+    setSaving(true)
     try {
       await createReminder(eventId, { remind_at: remindAt.toISOString() })
       await refresh()
     } catch (err) {
       console.error(err)
       alert('Failed to create reminder')
+    } finally {
+      setSaving(false)
     }
   }
 
 
-  async function handleAddCustom() {
-    if (!customValue) return
-    const remindAt = new Date(customValue)
-    if (Number.isNaN(remindAt.getTime()) || remindAt.getTime() <= Date.now()) {
-      alert('Pick a valid future date/time')
+  function handlePresetClick(minutes) {
+    addReminder(new Date(anchorTime.getTime() - minutes * 60 * 1000))
+  }
+
+
+  function handleCustomOffsetSubmit() {
+    const amount = parseFloat(offsetAmount)
+    if (!amount || amount <= 0) {
+      alert('Enter a number greater than 0')
       return
     }
-    try {
-      await createReminder(eventId, { remind_at: remindAt.toISOString() })
-      setCustomValue('')
-      await refresh()
-    } catch (err) {
-      console.error(err)
-      alert('Failed to create reminder')
+    const unit = OFFSET_UNITS.find((u) => u.label === offsetUnit) || OFFSET_UNITS[0]
+    const totalMinutes = amount * unit.minutesPerUnit
+    addReminder(new Date(anchorTime.getTime() - totalMinutes * 60 * 1000))
+  }
+
+
+  function handleCustomDateSubmit() {
+    if (!customValue) return
+    const remindAt = new Date(customValue)
+    if (Number.isNaN(remindAt.getTime())) {
+      alert('Pick a valid date/time')
+      return
     }
+    addReminder(remindAt)
+    setCustomValue('')
   }
 
 
@@ -489,9 +518,43 @@ function ReminderSection({ eventId, startTime, endTime }) {
   }
 
 
+  const tabBtnStyle = (isActive) => ({
+    flex: 1,
+    padding: '8px 12px',
+    borderRadius: 8,
+    border: '1px solid var(--border-default)',
+    background: isActive ? 'var(--accent-primary)' : 'var(--surface)',
+    color: isActive ? '#fff' : 'var(--text-primary)',
+    cursor: 'pointer',
+    fontWeight: 700,
+    fontSize: 13
+  })
+
+
+  const anchorChipStyle = (isActive, disabled) => ({
+    flex: 1,
+    padding: '8px 10px',
+    borderRadius: 8,
+    border: '1px solid var(--border-default)',
+    background: isActive ? 'var(--accent-primary)' : 'var(--surface)',
+    color: isActive ? '#fff' : 'var(--text-primary)',
+    cursor: disabled ? 'default' : 'pointer',
+    opacity: disabled ? 0.4 : 1,
+    fontWeight: 600,
+    fontSize: 12
+  })
+
+
   return (
     <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 12, marginTop: 4 }}>
       <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>Reminders</div>
+
+
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+        Start: {startTime ? new Date(startTime).toLocaleString() : 'Not set'}
+        {'  \u00b7  '}
+        End: {endTime ? new Date(endTime).toLocaleString() : 'Not set'}
+      </div>
 
 
       {loading ? (
@@ -509,29 +572,93 @@ function ReminderSection({ eventId, startTime, endTime }) {
           {reminders.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>No reminders set.</div>}
 
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-            {OFFSETS.map((opt) => (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            <button type="button" onClick={() => setTab('quick')} style={tabBtnStyle(tab === 'quick')}>Quick</button>
+            <button type="button" onClick={() => setTab('custom')} style={tabBtnStyle(tab === 'custom')}>Custom</button>
+          </div>
+
+
+          {tab === 'quick' && (
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                <button type="button" onClick={() => setAnchor('start')} style={anchorChipStyle(anchor === 'start', false)}>
+                  Before start
+                </button>
+                <button
+                  type="button"
+                  onClick={() => endTime && setAnchor('end')}
+                  disabled={!endTime}
+                  style={anchorChipStyle(anchor === 'end', !endTime)}
+                >
+                  Before end{!endTime ? ' (no end time)' : ''}
+                </button>
+              </div>
+
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                {OFFSET_PRESETS.map((opt) => (
+                  <button
+                    key={opt.minutes}
+                    type="button"
+                    onClick={() => handlePresetClick(opt.minutes)}
+                    disabled={saving}
+                    style={{ border: '1px solid var(--border-default)', borderRadius: 999, background: 'var(--surface)', color: 'var(--text-primary)', padding: '4px 10px', fontSize: 12, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                Or set a custom amount before {anchor === 'end' ? 'end' : 'start'}:
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min="0"
+                  value={offsetAmount}
+                  onChange={(e) => setOffsetAmount(e.target.value)}
+                  style={{ width: 60, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)', textAlign: 'center' }}
+                />
+                <select
+                  value={offsetUnit}
+                  onChange={(e) => setOffsetUnit(e.target.value)}
+                  style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+                >
+                  {OFFSET_UNITS.map((u) => <option key={u.label} value={u.label}>{u.label}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleCustomOffsetSubmit}
+                  disabled={saving}
+                  style={{ padding: '8px 14px', border: 'none', borderRadius: 8, background: 'var(--accent-primary)', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: saving ? 0.6 : 1 }}
+                >
+                  Set
+                </button>
+              </div>
+            </>
+          )}
+
+
+          {tab === 'custom' && (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="datetime-local"
+                value={customValue}
+                onChange={(e) => setCustomValue(e.target.value)}
+                style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+              />
               <button
-                key={opt.minutes}
                 type="button"
-                onClick={() => handleAddOffset(opt.minutes)}
-                style={{ border: '1px solid var(--border-default)', borderRadius: 999, background: 'var(--surface)', color: 'var(--text-primary)', padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
+                onClick={handleCustomDateSubmit}
+                disabled={saving}
+                style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
               >
-                {opt.label}
+                Add
               </button>
-            ))}
-          </div>
-
-
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input
-              type="datetime-local"
-              value={customValue}
-              onChange={(e) => setCustomValue(e.target.value)}
-              style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
-            />
-            <button type="button" onClick={handleAddCustom} style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer' }}>Add</button>
-          </div>
+            </div>
+          )}
         </>
       )}
     </div>
