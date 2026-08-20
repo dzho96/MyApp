@@ -199,6 +199,29 @@ export default function EventDetailScreen({ route, navigation }) {
           if (result?.id) createdTaskIds.push(result.id)
         }
       }
+
+
+      // Auto-chain: if this event was created from a Quick Add draft that
+      // detected recurrence, save the recurrence rule immediately — no
+      // separate manual "open Repeats" step, ever. byDay is intentionally
+      // NOT sent (setRecurrence has no such field); it's absorbed naturally
+      // since start_time is already anchored to the correct weekday by the
+      // parser. Failure here is non-fatal: the event itself still exists,
+      // the user just needs to set Repeats manually as a fallback.
+      if (draft?.recurrence && newEventId) {
+        try {
+          await setRecurrence(newEventId, {
+            frequency: draft.recurrence.type,
+            interval: draft.recurrence.interval || 1,
+            until: draft.recurrence.until || null,
+            count: null
+          })
+        } catch (recurrenceErr) {
+          Alert.alert('Recurrence not saved', 'Event was created, but the recurrence rule could not be saved automatically. Open the event and set Repeats manually.')
+        }
+      }
+
+
       navigation.goBack()
     } catch (err) {
       if (newEventId) {
