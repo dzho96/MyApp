@@ -1,9 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { fetchEvents, createEvent, updateEvent, deleteEvent } from './api'
+import {
+  fetchEventsWithOccurrences,
+  createEvent,
+  updateEvent,
+  deleteEvent,
+  fetchReminders,
+  createReminder,
+  deleteReminder,
+  fetchRecurrence,
+  setRecurrence,
+  deleteRecurrence
+} from './api'
 import { fetchEventTasks, createEventTask, updateEventTask, deleteEventTask } from './tasksApi'
 
+
 const CATEGORIES = ['personal', 'work', 'games']
+
 
 const sampleEvents = [
   { id: 1, name: 'Team sync', description: 'Review project plan', category: 'work', start_time: new Date(new Date().setHours(9, 0, 0, 0)).toISOString(), end_time: new Date(new Date().setHours(10, 0, 0, 0)).toISOString(), requires_action: false, completed: false, task_count: 0, completed_task_count: 0 },
@@ -12,17 +25,20 @@ const sampleEvents = [
   { id: 4, name: 'Doctor appointment', description: 'Health checkup', category: 'personal', start_time: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString(), end_time: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString(), requires_action: true, completed: false, task_count: 0, completed_task_count: 0 }
 ]
 
+
 function startOfDay(date) {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
   return d
 }
 
+
 function addDays(date, amount) {
   const d = new Date(date)
   d.setDate(d.getDate() + amount)
   return d
 }
+
 
 function startOfWeek(date) {
   const d = startOfDay(date)
@@ -32,22 +48,27 @@ function startOfWeek(date) {
   return d
 }
 
+
 function formatMonth(date) {
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(date)
 }
+
 
 function formatShortDay(date) {
   return new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date)
 }
 
+
 function formatDayNumber(date) {
   return new Intl.DateTimeFormat('en-US', { day: 'numeric' }).format(date)
 }
+
 
 function formatDateTime(dateString) {
   if (!dateString) return 'No date'
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(dateString))
 }
+
 
 function toLocalInputValue(isoString) {
   if (!isoString) return ''
@@ -57,26 +78,31 @@ function toLocalInputValue(isoString) {
   return local.toISOString().slice(0, 16)
 }
 
+
 function eventMatchesDate(event, date) {
   if (!event.start_time) return false
   const eventDate = new Date(event.start_time)
   return startOfDay(eventDate).getTime() === startOfDay(date).getTime()
 }
 
+
 function getVisibleDayEvents(eventsList, selectedDate) {
   return [...eventsList].filter((event) => eventMatchesDate(event, selectedDate)).sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
 }
+
 
 function getWeekDates(anchorDate) {
   const start = startOfWeek(anchorDate)
   return Array.from({ length: 7 }, (_, index) => addDays(start, index))
 }
 
+
 function getMonthGrid(anchorDate) {
   const first = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1)
   const start = startOfWeek(first)
   return Array.from({ length: 42 }, (_, index) => addDays(start, index))
 }
+
 
 function getMonthEvents(eventsList, anchorDate) {
   const monthStart = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1)
@@ -88,16 +114,19 @@ function getMonthEvents(eventsList, anchorDate) {
   })
 }
 
+
 function getDueTime(event) {
   if (event.end_time) return new Date(event.end_time)
   if (event.start_time) return new Date(event.start_time)
   return null
 }
 
+
 function isEventComplete(event) {
   if (event.task_count > 0) return event.completed_task_count >= event.task_count
   return !!event.completed
 }
+
 
 function isOverdue(event, now) {
   if (!event.requires_action || isEventComplete(event)) return false
@@ -106,6 +135,7 @@ function isOverdue(event, now) {
   return due.getTime() < now.getTime()
 }
 
+
 function isDueToday(event, now) {
   if (!event.requires_action || isEventComplete(event)) return false
   const due = getDueTime(event)
@@ -113,12 +143,14 @@ function isDueToday(event, now) {
   return due.getTime() >= now.getTime() && startOfDay(due).getTime() === startOfDay(now).getTime()
 }
 
+
 function isUpcoming(event, now) {
   if (!event.requires_action || isEventComplete(event)) return false
   const due = getDueTime(event)
   if (!due) return false
   return due.getTime() >= now.getTime() && startOfDay(due).getTime() > startOfDay(now).getTime()
 }
+
 
 function isActiveEvent(event, now) {
   if (isEventComplete(event)) return false
@@ -129,6 +161,7 @@ function isActiveEvent(event, now) {
   if (!start && end) return now.getTime() <= end.getTime()
   return false
 }
+
 
 function getDashboardLanes(eventsList, now) {
   const overdue = []
@@ -150,6 +183,7 @@ function getDashboardLanes(eventsList, now) {
   return { overdue, today, upcoming, active }
 }
 
+
 function categoryVar(category) {
   if (category === 'work') return 'var(--category-work)'
   if (category === 'personal') return 'var(--category-personal)'
@@ -157,13 +191,16 @@ function categoryVar(category) {
   return 'var(--category-default)'
 }
 
+
 function CategoryDot({ category }) {
   return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: categoryVar(category), marginRight: 6, flexShrink: 0 }} />
 }
 
+
 function categoryBorderStyle(category, extra = {}) {
   return { borderLeft: `4px solid ${categoryVar(category)}`, ...extra }
 }
+
 
 function TaskBadge({ event }) {
   if (!event.task_count) return null
@@ -174,12 +211,14 @@ function TaskBadge({ event }) {
   )
 }
 
+
 function useEventsData() {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
 
+
   useEffect(() => {
-    fetchEvents()
+    fetchEventsWithOccurrences()
       .then((list) => {
         const data = list && list.length > 0 ? list : sampleEvents
         setEvents(data)
@@ -188,10 +227,12 @@ function useEventsData() {
       .finally(() => setLoading(false))
   }, [])
 
+
   async function refreshEvents() {
-    const updated = await fetchEvents()
+    const updated = await fetchEventsWithOccurrences()
     setEvents(updated.length ? updated : sampleEvents)
   }
+
 
   async function handleToggleCompleted(event) {
     await updateEvent(event.id, {
@@ -206,8 +247,10 @@ function useEventsData() {
     await refreshEvents()
   }
 
+
   return { events, loading, refreshEvents, handleToggleCompleted }
 }
+
 
 function useThemeMode() {
   const [mode, setMode] = useState(() => {
@@ -217,18 +260,22 @@ function useThemeMode() {
     return 'light'
   })
 
+
   useEffect(() => {
     document.documentElement.setAttribute('data-mode', mode)
     document.documentElement.setAttribute('data-theme', 'default')
     window.localStorage.setItem('pti-theme-mode', mode)
   }, [mode])
 
+
   function toggleMode() {
     setMode((prev) => (prev === 'light' ? 'dark' : 'light'))
   }
 
+
   return { mode, toggleMode }
 }
+
 
 function TopNav({ onAddEvent, mode, onToggleMode }) {
   const linkStyle = ({ isActive }) => ({
@@ -256,7 +303,7 @@ function TopNav({ onAddEvent, mode, onToggleMode }) {
           title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           style={{ padding: '10px 12px', background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 14 }}
         >
-          {mode === 'dark' ? '☀️ Light' : '🌙 Dark'}
+          {mode === 'dark' ? '\u2600\ufe0f Light' : '\ud83c\udf19 Dark'}
         </button>
         <button type="button" onClick={onAddEvent} style={{ padding: '10px 16px', background: 'var(--accent-primary)', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>
           + Add Event
@@ -266,10 +313,12 @@ function TopNav({ onAddEvent, mode, onToggleMode }) {
   )
 }
 
+
 function TaskChecklist({ eventId, requiresAction }) {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [newTaskName, setNewTaskName] = useState('')
+
 
   async function refresh() {
     if (!eventId) return
@@ -284,7 +333,9 @@ function TaskChecklist({ eventId, requiresAction }) {
     }
   }
 
+
   useEffect(() => { refresh() }, [eventId])
+
 
   async function handleAdd(e) {
     e.preventDefault()
@@ -299,6 +350,7 @@ function TaskChecklist({ eventId, requiresAction }) {
     }
   }
 
+
   async function handleToggle(task) {
     try {
       await updateEventTask(eventId, task.id, { completed: !task.completed })
@@ -308,6 +360,7 @@ function TaskChecklist({ eventId, requiresAction }) {
       alert('Failed to update sub-task')
     }
   }
+
 
   async function handleDelete(task) {
     try {
@@ -319,7 +372,9 @@ function TaskChecklist({ eventId, requiresAction }) {
     }
   }
 
+
   if (!eventId) return null
+
 
   return (
     <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 12, marginTop: 4 }}>
@@ -356,6 +411,235 @@ function TaskChecklist({ eventId, requiresAction }) {
   )
 }
 
+
+function ReminderSection({ eventId, startTime, endTime }) {
+  const [reminders, setReminders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [customValue, setCustomValue] = useState('')
+
+
+  async function refresh() {
+    setLoading(true)
+    try {
+      const list = await fetchReminders(eventId)
+      setReminders(list.filter((r) => !r.dismissed))
+    } catch (err) {
+      setReminders([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+
+  useEffect(() => { refresh() }, [eventId])
+
+
+  const OFFSETS = [
+    { label: '10 min before', minutes: 10 },
+    { label: '30 min before', minutes: 30 },
+    { label: '1 hour before', minutes: 60 },
+    { label: '1 day before', minutes: 24 * 60 }
+  ]
+
+
+  async function handleAddOffset(minutes) {
+    const anchor = startTime ? new Date(startTime) : new Date()
+    const remindAt = new Date(anchor.getTime() - minutes * 60 * 1000)
+    if (remindAt.getTime() <= Date.now()) {
+      alert('Reminder time must be in the future')
+      return
+    }
+    try {
+      await createReminder(eventId, { remind_at: remindAt.toISOString() })
+      await refresh()
+    } catch (err) {
+      console.error(err)
+      alert('Failed to create reminder')
+    }
+  }
+
+
+  async function handleAddCustom() {
+    if (!customValue) return
+    const remindAt = new Date(customValue)
+    if (Number.isNaN(remindAt.getTime()) || remindAt.getTime() <= Date.now()) {
+      alert('Pick a valid future date/time')
+      return
+    }
+    try {
+      await createReminder(eventId, { remind_at: remindAt.toISOString() })
+      setCustomValue('')
+      await refresh()
+    } catch (err) {
+      console.error(err)
+      alert('Failed to create reminder')
+    }
+  }
+
+
+  async function handleDelete(reminder) {
+    try {
+      await deleteReminder(reminder.id)
+      await refresh()
+    } catch (err) {
+      console.error(err)
+      alert('Failed to delete reminder')
+    }
+  }
+
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 12, marginTop: 4 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>Reminders</div>
+
+
+      {loading ? (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Loading...</div>
+      ) : (
+        <>
+          {reminders.map((reminder) => (
+            <div key={reminder.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)' }}>
+                {new Date(reminder.remind_at).toLocaleString()}
+              </span>
+              <button type="button" onClick={() => handleDelete(reminder)} aria-label="Remove reminder" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>&times;</button>
+            </div>
+          ))}
+          {reminders.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>No reminders set.</div>}
+
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+            {OFFSETS.map((opt) => (
+              <button
+                key={opt.minutes}
+                type="button"
+                onClick={() => handleAddOffset(opt.minutes)}
+                style={{ border: '1px solid var(--border-default)', borderRadius: 999, background: 'var(--surface)', color: 'var(--text-primary)', padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              type="datetime-local"
+              value={customValue}
+              onChange={(e) => setCustomValue(e.target.value)}
+              style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+            />
+            <button type="button" onClick={handleAddCustom} style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer' }}>Add</button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+
+function RecurrenceSection({ eventId }) {
+  const [loading, setLoading] = useState(true)
+  const [enabled, setEnabled] = useState(false)
+  const [frequency, setFrequency] = useState('weekly')
+  const [interval, setIntervalValue] = useState('1')
+  const [saving, setSaving] = useState(false)
+
+
+  useEffect(() => {
+    fetchRecurrence(eventId)
+      .then((rule) => {
+        if (rule) {
+          setEnabled(true)
+          setFrequency(rule.frequency || 'weekly')
+          setIntervalValue(String(rule.interval || 1))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [eventId])
+
+
+  async function handleToggle(next) {
+    setEnabled(next)
+    if (!next) {
+      setSaving(true)
+      try {
+        await deleteRecurrence(eventId)
+      } catch (err) {
+        alert('Failed to remove recurrence')
+      } finally {
+        setSaving(false)
+      }
+    }
+  }
+
+
+  async function handleSave() {
+    const intervalNum = parseInt(interval, 10)
+    if (!intervalNum || intervalNum < 1) {
+      alert('Repeat interval must be at least 1')
+      return
+    }
+    setSaving(true)
+    try {
+      await setRecurrence(eventId, { frequency, interval: intervalNum, until: null, count: null })
+      alert('Recurrence saved')
+    } catch (err) {
+      alert('Failed to save recurrence')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+
+  if (loading) return null
+
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 12, marginTop: 4 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        <input type="checkbox" checked={enabled} onChange={(e) => handleToggle(e.target.checked)} disabled={saving} />
+        Repeats
+      </label>
+
+
+      {enabled && (
+        <>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Every</span>
+            <input
+              type="number"
+              min="1"
+              value={interval}
+              onChange={(e) => setIntervalValue(e.target.value)}
+              style={{ width: 60, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)', textAlign: 'center' }}
+            />
+            <select
+              value={frequency}
+              onChange={(e) => setFrequency(e.target.value)}
+              style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+            >
+              <option value="daily">day(s)</option>
+              <option value="weekly">week(s)</option>
+              <option value="monthly">month(s)</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            style={{ padding: '8px 14px', border: 'none', borderRadius: 8, background: 'var(--accent-primary)', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? 'Saving\u2026' : 'Save repeat rule'}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+
 function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
   const [name, setName] = useState(initialEvent?.name || '')
   const [description, setDescription] = useState(initialEvent?.description || '')
@@ -369,6 +653,7 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
   const [draftTasks, setDraftTasks] = useState([])
   const [newDraftTaskName, setNewDraftTaskName] = useState('')
 
+
   function handleAddDraftTask(e) {
     e.preventDefault()
     const trimmed = newDraftTaskName.trim()
@@ -377,9 +662,11 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
     setNewDraftTaskName('')
   }
 
+
   function handleRemoveDraftTask(index) {
     setDraftTasks((prev) => prev.filter((_, i) => i !== index))
   }
+
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -391,12 +678,14 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
       return
     }
 
+
     if (mode === 'add' && startTime && new Date(startTime).getTime() < Date.now()) {
       const proceed = window.confirm(
-        'This event starts in the past. This app is meant to track upcoming things — create it anyway?'
+        'This event starts in the past. This app is meant to track upcoming things \u2014 create it anyway?'
       )
       if (!proceed) return
     }
+
 
     const payload = {
       name,
@@ -407,6 +696,7 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
       requires_action: requiresAction || draftTasks.length > 0,
       completed: mode === 'add' ? false : completed
     }
+
 
     if (mode === 'edit' && initialEvent) {
       try {
@@ -420,11 +710,13 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
       return
     }
 
+
     let newEventId = null
     const createdTaskIds = []
     try {
       const created = await createEvent(payload)
       newEventId = created?.id
+
 
       if (draftTasks.length > 0) {
         if (!newEventId) {
@@ -435,6 +727,7 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
           if (result?.id) createdTaskIds.push(result.id)
         }
       }
+
 
       await onSaved()
       onClose()
@@ -457,6 +750,7 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
     }
   }
 
+
   async function handleDelete() {
     if (!initialEvent) return
     try {
@@ -468,6 +762,7 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
       alert('Delete failed')
     }
   }
+
 
   return (
     <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'var(--modal-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }} onClick={onClose}>
@@ -496,6 +791,7 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
           )}
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" style={{ minHeight: 80, padding: 10, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
 
+
           {mode === 'add' && (
             <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 10, marginTop: 2 }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
@@ -523,6 +819,7 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
             </div>
           )}
 
+
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <button type="submit" style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer', fontWeight: 600 }}>Save</button>
             {mode === 'edit' && (
@@ -532,25 +829,33 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
           </div>
         </form>
         {mode === 'edit' && initialEvent && (
-          <TaskChecklist eventId={initialEvent.id} requiresAction={requiresAction} />
+          <>
+            <TaskChecklist eventId={initialEvent.id} requiresAction={requiresAction} />
+            <ReminderSection eventId={initialEvent.id} startTime={initialEvent.start_time} endTime={initialEvent.end_time} />
+            <RecurrenceSection eventId={initialEvent.id} />
+          </>
         )}
       </div>
     </div>
   )
 }
 
+
 function CollapsibleSection({ title, count, tone = 'neutral', emptyText, defaultOpen, children, hasItems }) {
   const [open, setOpen] = useState(defaultOpen && hasItems)
+
 
   useEffect(() => {
     setOpen(defaultOpen && hasItems)
   }, [hasItems, defaultOpen])
+
 
   const toneStyles = {
     danger: { border: 'var(--danger-border)', headerColor: 'var(--danger-text)', badgeBg: 'var(--danger-bg)' },
     neutral: { border: 'var(--border-default)', headerColor: 'var(--text-primary)', badgeBg: 'var(--surface-muted)' },
     muted: { border: 'var(--border-default)', headerColor: 'var(--text-secondary)', badgeBg: 'var(--surface-muted)' }
   }[tone] || { border: 'var(--border-default)', headerColor: 'var(--text-primary)', badgeBg: 'var(--surface-muted)' }
+
 
   return (
     <section style={{ background: 'var(--surface)', border: `1px solid ${toneStyles.border}`, borderRadius: 12, marginBottom: 14, overflow: 'hidden' }}>
@@ -574,9 +879,11 @@ function CollapsibleSection({ title, count, tone = 'neutral', emptyText, default
   )
 }
 
+
 function OutstandingTasks({ eventId, taskCount }) {
   const [tasks, setTasks] = useState(null)
   const [loading, setLoading] = useState(false)
+
 
   useEffect(() => {
     if (!taskCount) return
@@ -587,15 +894,18 @@ function OutstandingTasks({ eventId, taskCount }) {
       .finally(() => setLoading(false))
   }, [eventId, taskCount])
 
+
   if (!taskCount) return null
   if (loading || tasks === null) {
     return <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Loading tasks...</div>
   }
 
+
   const outstanding = tasks.filter((t) => !t.completed)
   if (outstanding.length === 0) {
     return <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>All sub-tasks complete.</div>
   }
+
 
   return (
     <div style={{ marginTop: 6 }}>
@@ -612,6 +922,7 @@ function OutstandingTasks({ eventId, taskCount }) {
   )
 }
 
+
 function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }) {
   const hasSubtasks = event.task_count > 0
   return (
@@ -627,7 +938,7 @@ function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }
             <button
               type="button"
               onClick={() => onEdit(event)}
-              title="This event has sub-tasks — open it to check them off"
+              title="This event has sub-tasks \u2014 open it to check them off"
               style={{ border: '1px solid var(--border-default)', borderRadius: 6, background: 'var(--surface)', color: 'var(--text-secondary)', padding: '4px 8px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}
             >
               Open checklist
@@ -644,6 +955,7 @@ function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }
         )}
       </div>
 
+
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
         <span style={{ textTransform: 'capitalize' }}>{event.category || 'uncategorized'}</span>
         <span style={{ color: 'var(--border-default)' }}>&middot;</span>
@@ -652,21 +964,25 @@ function EventListCard({ event, onEdit, onToggleCompleted, showMarkDone = true }
         <span>End: {event.end_time ? formatDateTime(event.end_time) : 'Not set'}</span>
       </div>
 
+
       {event.description && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
           {event.description}
         </div>
       )}
 
+
       <OutstandingTasks eventId={event.id} taskCount={event.task_count} />
     </div>
   )
 }
 
+
 function DashboardPage({ events, loading, onEdit, onToggleCompleted }) {
   const now = useMemo(() => new Date(), [events])
   const lanes = useMemo(() => getDashboardLanes(events, now), [events, now])
   const previewCount = 4
+
 
   const renderLane = (items) => (
     <>
@@ -679,7 +995,9 @@ function DashboardPage({ events, loading, onEdit, onToggleCompleted }) {
     </>
   )
 
+
   if (loading) return <div>Loading dashboard...</div>
+
 
   return (
     <div>
@@ -699,14 +1017,17 @@ function DashboardPage({ events, loading, onEdit, onToggleCompleted }) {
   )
 }
 
+
 function CalendarPage({ events, loading, onEdit }) {
   const [view, setView] = useState('month')
   const [selectedDate, setSelectedDate] = useState(new Date())
+
 
   const monthEvents = useMemo(() => getMonthEvents(events, selectedDate), [events, selectedDate])
   const selectedDayEvents = useMemo(() => getVisibleDayEvents(events, selectedDate), [events, selectedDate])
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate])
   const monthGrid = useMemo(() => getMonthGrid(selectedDate), [selectedDate])
+
 
   function changeMonth(offset) {
     const next = new Date(selectedDate)
@@ -714,16 +1035,19 @@ function CalendarPage({ events, loading, onEdit }) {
     setSelectedDate(next)
   }
 
+
   function changeWeek(offset) {
     const next = new Date(selectedDate)
     next.setDate(next.getDate() + offset * 7)
     setSelectedDate(next)
   }
 
+
   function changeDay(offset) {
     const next = addDays(selectedDate, offset)
     setSelectedDate(next)
   }
+
 
   const renderMonthView = () => (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8 }}>
@@ -749,6 +1073,7 @@ function CalendarPage({ events, loading, onEdit }) {
     </div>
   )
 
+
   const renderWeekView = () => (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8 }}>
       {weekDates.map((date) => {
@@ -772,6 +1097,7 @@ function CalendarPage({ events, loading, onEdit }) {
     </div>
   )
 
+
   const renderDayView = () => (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border-default)', borderRadius: 12, padding: 16 }}>
       <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 12, color: 'var(--text-primary)' }}>
@@ -786,6 +1112,7 @@ function CalendarPage({ events, loading, onEdit }) {
       ))}
     </div>
   )
+
 
   return (
     <div>
@@ -806,10 +1133,12 @@ function CalendarPage({ events, loading, onEdit }) {
         </div>
       </section>
 
+
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2.2fr) minmax(260px, 0.8fr)', gap: 20 }}>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border-default)', borderRadius: 12, padding: 16 }}>
           {loading ? <div>Loading schedule...</div> : (view === 'day' ? renderDayView() : view === 'week' ? renderWeekView() : renderMonthView())}
         </div>
+
 
         <aside>
           <CollapsibleSection
@@ -828,6 +1157,7 @@ function CalendarPage({ events, loading, onEdit }) {
             ))}
             {selectedDayEvents.length > 6 && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>+{selectedDayEvents.length - 6} more</div>}
           </CollapsibleSection>
+
 
           <CollapsibleSection
             title="This month"
@@ -851,32 +1181,39 @@ function CalendarPage({ events, loading, onEdit }) {
   )
 }
 
+
 export default function App() {
   const { events, loading, refreshEvents, handleToggleCompleted } = useEventsData()
   const { mode, toggleMode } = useThemeMode()
   const [modalState, setModalState] = useState(null)
 
+
   function openAddModal() {
     setModalState({ mode: 'add' })
   }
+
 
   function openEditModal(event) {
     setModalState({ mode: 'edit', event })
   }
 
+
   function closeModal() {
     setModalState(null)
   }
+
 
   return (
     <div style={{ padding: 20, fontFamily: 'sans-serif', background: 'var(--surface-muted)', minHeight: '100vh' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <TopNav onAddEvent={openAddModal} mode={mode} onToggleMode={toggleMode} />
 
+
         <Routes>
           <Route path="/" element={<DashboardPage events={events} loading={loading} onEdit={openEditModal} onToggleCompleted={handleToggleCompleted} />} />
           <Route path="/calendar" element={<CalendarPage events={events} loading={loading} onEdit={openEditModal} />} />
         </Routes>
+
 
         {modalState && (
           <EventModal
