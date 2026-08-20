@@ -395,15 +395,16 @@ function TaskChecklist({ eventId, requiresAction }) {
           {tasks.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>No sub-tasks yet.</div>}
         </>
       )}
-      <form onSubmit={handleAdd} style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
         <input
           value={newTaskName}
           onChange={(e) => setNewTaskName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(e) } }}
           placeholder="Add a sub-task"
-          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)' }}
+          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
         />
-        <button type="submit" style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer' }}>Add</button>
-      </form>
+        <button type="button" onClick={handleAdd} style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer' }}>Add</button>
+      </div>
       {!requiresAction && tasks.length > 0 && (
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Adding a sub-task marks this event as requiring action.</div>
       )}
@@ -820,6 +821,15 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
           )}
 
 
+          {mode === 'edit' && initialEvent && (
+            <>
+              <TaskChecklist eventId={initialEvent.id} requiresAction={requiresAction} />
+              <ReminderSection eventId={initialEvent.id} startTime={initialEvent.start_time} endTime={initialEvent.end_time} />
+              <RecurrenceSection eventId={initialEvent.id} />
+            </>
+          )}
+
+
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <button type="submit" style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer', fontWeight: 600 }}>Save</button>
             {mode === 'edit' && (
@@ -828,13 +838,6 @@ function EventModal({ mode, initialEvent, onClose, onSaved, onDeleted }) {
             <button type="button" onClick={onClose} style={{ padding: '10px 16px', border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--surface)', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
           </div>
         </form>
-        {mode === 'edit' && initialEvent && (
-          <>
-            <TaskChecklist eventId={initialEvent.id} requiresAction={requiresAction} />
-            <ReminderSection eventId={initialEvent.id} startTime={initialEvent.start_time} endTime={initialEvent.end_time} />
-            <RecurrenceSection eventId={initialEvent.id} />
-          </>
-        )}
       </div>
     </div>
   )
