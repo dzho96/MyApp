@@ -34,3 +34,126 @@ export async function deleteEvent(id) {
   if (!res.ok) throw new Error('Delete failed');
   return res.json();
 }
+
+export async function fetchReminders(eventId) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/reminders`);
+  if (!res.ok) throw new Error('Failed to fetch reminders');
+  const data = await res.json();
+  return data.reminders || [];
+}
+
+export async function createReminder(eventId, payload) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/reminders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error('Failed to create reminder');
+  return res.json();
+}
+
+export async function updateReminder(id, payload) {
+  const res = await fetch(`${API_BASE}/api/reminders/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error('Failed to update reminder');
+  return res.json();
+}
+
+export async function deleteReminder(id) {
+  const res = await fetch(`${API_BASE}/api/reminders/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete reminder');
+  return res.json();
+}
+
+export async function snoozeReminder(id, { minutes, until } = {}) {
+  const res = await fetch(`${API_BASE}/api/reminders/${id}/snooze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(minutes ? { minutes } : { until })
+  });
+  if (!res.ok) throw new Error('Failed to snooze reminder');
+  return res.json();
+}
+
+export async function fetchAllReminders(events) {
+  const results = await Promise.all(
+    events.map((event) =>
+      fetchReminders(event.id)
+        .then((reminders) => reminders.map((r) => ({ ...r, event })))
+        .catch(() => [])
+    )
+  );
+  return results.flat();
+}
+
+export async function fetchRecurrence(eventId) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/recurrence`);
+  if (!res.ok) throw new Error('Failed to fetch recurrence');
+  const data = await res.json();
+  return data.recurrence || null;
+}
+
+export async function setRecurrence(eventId, payload) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/recurrence`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error('Failed to set recurrence');
+  return res.json();
+}
+
+export async function deleteRecurrence(eventId) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/recurrence`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete recurrence');
+  return res.json();
+}
+
+export async function fetchOccurrences(eventId) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/occurrences`);
+  if (!res.ok) throw new Error('Failed to fetch occurrences');
+  const data = await res.json();
+  return data.occurrences || [];
+}
+
+export async function fetchEventsWithOccurrences() {
+  const events = await fetchEvents();
+
+  const expansions = await Promise.all(
+    events.map(async (event) => {
+      let recurrence = null;
+      try {
+        recurrence = await fetchRecurrence(event.id);
+      } catch (err) {
+        recurrence = null;
+      }
+      if (!recurrence || !recurrence.frequency) {
+        return [{ ...event, occurrenceKey: `${event.id}-base`, isRecurringInstance: false }];
+      }
+
+      let occurrences = [];
+      try {
+        occurrences = await fetchOccurrences(event.id);
+      } catch (err) {
+        occurrences = [];
+      }
+      if (occurrences.length === 0) {
+        return [{ ...event, occurrenceKey: `${event.id}-base`, isRecurringInstance: false }];
+      }
+
+      return occurrences.map((occ, index) => ({
+        ...event,
+        start_time: occ.start_time,
+        end_time: occ.end_time,
+        occurrenceKey: `${event.id}-occ-${index}`,
+        isRecurringInstance: true,
+        occurrenceIndex: index
+      }));
+    })
+  );
+
+  return expansions.flat();
+}
