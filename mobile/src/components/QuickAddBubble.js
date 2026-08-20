@@ -7,6 +7,14 @@
 // bubble or the static "+ Add" button) is confusing and was a source of
 // crashes when tapped in rapid succession.
 //
+// activeRouteName is passed in as a prop from App.js (tracked via
+// NavigationContainer's onStateChange/onReady) rather than read with
+// useNavigationState here directly — this component is mounted as a
+// SIBLING of <Tabs />, not inside a Navigator's own screen tree, so
+// useNavigationState has no navigator state to read from this position
+// and throws "Couldn't get the navigation state. Is your component
+// inside a navigator?" if used here.
+//
 // Tap the bubble -> modal with a text input -> "Parse" runs the free,
 // offline chrono-node based parser (shared/quickAddParser.js) -> navigates
 // to EventDetail with a pre-filled DRAFT (nothing is saved yet). The
@@ -15,28 +23,15 @@
 
 import React, { useState } from 'react'
 import { View, Modal, TouchableOpacity, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
-import { useNavigation, useNavigationState } from '@react-navigation/native'
+import { useNavigation } from '@react-navigation/native'
 import { useThemeMode } from '../theme'
 import { parseQuickAddText } from '../../../shared/quickAddParser'
 
-// Walks the nested navigation state to find the name of the currently
-// focused route, regardless of how deep it is inside tab/stack nesting.
-function getActiveRouteName(state) {
-  if (!state || !state.routes || state.index == null) return null
-  const route = state.routes[state.index]
-  if (route.state) {
-    return getActiveRouteName(route.state)
-  }
-  return route.name
-}
-
-export default function QuickAddBubble() {
+export default function QuickAddBubble({ activeRouteName }) {
   const { colors } = useThemeMode()
   const navigation = useNavigation()
   const [visible, setVisible] = useState(false)
   const [text, setText] = useState('')
-
-  const activeRouteName = useNavigationState((state) => getActiveRouteName(state))
 
   function handleOpen() {
     setText('')

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { NavigationContainer } from '@react-navigation/native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
@@ -159,6 +159,20 @@ function useReminderNotificationResponses(navigationRef) {
 
 export default function App() {
   const navigationRef = useRef(null)
+  // Tracked at this level (rather than via useNavigationState inside
+  // QuickAddBubble) because QuickAddBubble is mounted as a SIBLING of
+  // <Tabs />, not as a descendant inside a Tab/Stack Navigator's screen
+  // tree. useNavigationState requires being inside a navigator's screen
+  // tree to read state and throws "Couldn't get the navigation state. Is
+  // your component inside a navigator?" when used from a position like
+  // QuickAddBubble's. Tracking the active route name here via
+  // onStateChange and passing it down as a plain prop avoids that entirely.
+  const [activeRouteName, setActiveRouteName] = useState(null)
+
+
+  function updateActiveRouteName() {
+    setActiveRouteName(navigationRef.current?.getCurrentRoute()?.name ?? null)
+  }
 
 
   useEffect(() => {
@@ -175,9 +189,13 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <NavigationContainer ref={navigationRef}>
+      <NavigationContainer
+        ref={navigationRef}
+        onReady={updateActiveRouteName}
+        onStateChange={updateActiveRouteName}
+      >
         <Tabs />
-        <QuickAddBubble />
+        <QuickAddBubble activeRouteName={activeRouteName} />
       </NavigationContainer>
     </ThemeProvider>
   )
