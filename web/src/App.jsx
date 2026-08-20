@@ -41,11 +41,9 @@ function addDays(date, amount) {
 }
 
 
-function startOfWeek(date) {
+export function startOfWeek(date) {
   const d = startOfDay(date)
-  const day = d.getDay()
-  const diff = (day === 0 ? -6 : 1 - day)
-  d.setDate(d.getDate() + diff)
+  d.setDate(d.getDate() - d.getDay())
   return d
 }
 
@@ -414,6 +412,7 @@ function TaskChecklist({ eventId, requiresAction }) {
 }
 
 
+
 function ReminderSection({ eventId, startTime, endTime }) {
   const [reminders, setReminders] = useState([])
   const [loading, setLoading] = useState(true)
@@ -666,6 +665,237 @@ function ReminderSection({ eventId, startTime, endTime }) {
   )
 }
 
+function DraftReminderSection({ startTime, endTime, reminders, onChange }) {
+  const [tab, setTab] = useState('quick')
+  const [anchor, setAnchor] = useState('start')
+  const [offsetAmount, setOffsetAmount] = useState('15')
+  const [offsetUnit, setOffsetUnit] = useState('minutes')
+  const [customValue, setCustomValue] = useState('')
+
+  const OFFSET_PRESETS = [
+    { label: '10 min', amount: 10, unit: 'minutes' },
+    { label: '30 min', amount: 30, unit: 'minutes' },
+    { label: '1 hour', amount: 1, unit: 'hours' },
+    { label: '1 day', amount: 1, unit: 'days' }
+  ]
+
+  const OFFSET_UNITS = [
+    { label: 'minutes', minutesPerUnit: 1 },
+    { label: 'hours', minutesPerUnit: 60 },
+    { label: 'days', minutesPerUnit: 24 * 60 },
+    { label: 'weeks', minutesPerUnit: 7 * 24 * 60 },
+    { label: 'months', minutesPerUnit: 30 * 24 * 60 }
+  ]
+
+  function addRelativeReminder(amount, unit) {
+    const unitConfig = OFFSET_UNITS.find((item) => item.label === unit)
+    if (!unitConfig || !Number.isFinite(amount) || amount <= 0) {
+      alert('Enter a number greater than 0')
+      return
+    }
+
+    onChange([
+      ...reminders,
+      {
+        kind: 'relative',
+        anchor,
+        amount,
+        unit,
+        offsetMinutes: amount * unitConfig.minutesPerUnit
+      }
+    ])
+  }
+
+  function handlePresetClick(preset) {
+    addRelativeReminder(preset.amount, preset.unit)
+  }
+
+  function handleCustomOffsetSubmit() {
+    addRelativeReminder(parseFloat(offsetAmount), offsetUnit)
+  }
+
+  function handleCustomDateSubmit() {
+    if (!customValue) return
+
+    const remindAt = new Date(customValue)
+    if (Number.isNaN(remindAt.getTime())) {
+      alert('Pick a valid date/time')
+      return
+    }
+
+    onChange([
+      ...reminders,
+      { kind: 'absolute', remindAt: remindAt.toISOString() }
+    ])
+    setCustomValue('')
+  }
+
+  function handleDelete(index) {
+    onChange(reminders.filter((_, reminderIndex) => reminderIndex !== index))
+  }
+
+  function describeReminder(reminder) {
+    if (reminder.kind === 'absolute') {
+      const date = new Date(reminder.remindAt)
+      return Number.isNaN(date.getTime()) ? 'Custom reminder (invalid date)' : date.toLocaleString()
+    }
+
+    const amount = reminder.amount
+    const unit = reminder.unit || 'minutes'
+    return `${amount} ${unit} before ${reminder.anchor === 'end' ? 'end' : 'start'}`
+  }
+
+  const tabBtnStyle = (isActive) => ({
+    flex: 1,
+    padding: '8px 12px',
+    borderRadius: 8,
+    border: '1px solid var(--border-default)',
+    background: isActive ? 'var(--accent-primary)' : 'var(--surface)',
+    color: isActive ? '#fff' : 'var(--text-primary)',
+    cursor: 'pointer',
+    fontWeight: 700,
+    fontSize: 13
+  })
+
+  const anchorChipStyle = (isActive, disabled) => ({
+    flex: 1,
+    padding: '8px 10px',
+    borderRadius: 8,
+    border: '1px solid var(--border-default)',
+    background: isActive ? 'var(--accent-primary)' : 'var(--surface)',
+    color: isActive ? '#fff' : 'var(--text-primary)',
+    cursor: disabled ? 'default' : 'pointer',
+    opacity: disabled ? 0.4 : 1,
+    fontWeight: 600,
+    fontSize: 12
+  })
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 12, marginTop: 4 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+        Reminders
+      </div>
+
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+        Start: {startTime ? new Date(startTime).toLocaleString() : 'Not set'}
+        {' · '}
+        End: {endTime ? new Date(endTime).toLocaleString() : 'Not set'}
+      </div>
+
+      {reminders.map((reminder, index) => (
+        <div key={`${reminder.kind}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)' }}>
+            {describeReminder(reminder)}
+          </span>
+          <button
+            type="button"
+            onClick={() => handleDelete(index)}
+            aria-label="Remove reminder"
+            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+          >
+            &times;
+          </button>
+        </div>
+      ))}
+      {reminders.length === 0 && (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
+          No reminders set.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <button type="button" onClick={() => setTab('quick')} style={tabBtnStyle(tab === 'quick')}>
+          Quick
+        </button>
+        <button type="button" onClick={() => setTab('custom')} style={tabBtnStyle(tab === 'custom')}>
+          Custom
+        </button>
+      </div>
+
+      {tab === 'quick' && (
+        <>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            <button
+              type="button"
+              onClick={() => setAnchor('start')}
+              style={anchorChipStyle(anchor === 'start', false)}
+            >
+              Before start
+            </button>
+            <button
+              type="button"
+              onClick={() => endTime && setAnchor('end')}
+              disabled={!endTime}
+              style={anchorChipStyle(anchor === 'end', !endTime)}
+            >
+              Before end{!endTime ? ' (no end time)' : ''}
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {OFFSET_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => handlePresetClick(preset)}
+                style={{ border: '1px solid var(--border-default)', borderRadius: 999, background: 'var(--surface)', color: 'var(--text-primary)', padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+            Or set a custom amount before {anchor === 'end' ? 'end' : 'start'}:
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              type="number"
+              min="0"
+              value={offsetAmount}
+              onChange={(e) => setOffsetAmount(e.target.value)}
+              style={{ width: 60, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)', textAlign: 'center' }}
+            />
+            <select
+              value={offsetUnit}
+              onChange={(e) => setOffsetUnit(e.target.value)}
+              style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+            >
+              {OFFSET_UNITS.map((unit) => (
+                <option key={unit.label} value={unit.label}>{unit.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleCustomOffsetSubmit}
+              style={{ padding: '8px 14px', border: 'none', borderRadius: 8, background: 'var(--accent-primary)', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+            >
+              Set
+            </button>
+          </div>
+        </>
+      )}
+
+      {tab === 'custom' && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            type="datetime-local"
+            value={customValue}
+            onChange={(e) => setCustomValue(e.target.value)}
+            style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+          />
+          <button
+            type="button"
+            onClick={handleCustomDateSubmit}
+            style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer' }}
+          >
+            Add
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function RecurrenceSection({ eventId }) {
   const [loading, setLoading] = useState(true)
@@ -769,6 +999,73 @@ function RecurrenceSection({ eventId }) {
   )
 }
 
+function DraftRecurrenceSection({ recurrence, onChange }) {
+  const enabled = !!recurrence
+
+  function handleToggle(next) {
+    if (!next) {
+      onChange(null)
+      return
+    }
+
+    onChange({
+      type: 'weekly',
+      interval: 1,
+      until: null
+    })
+  }
+
+  function updateRule(patch) {
+    onChange({
+      ...recurrence,
+      ...patch
+    })
+  }
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 12, marginTop: 4 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => handleToggle(e.target.checked)}
+        />
+        Repeats
+      </label>
+
+      {enabled && (
+        <>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Every</span>
+            <input
+              type="number"
+              min="1"
+              value={recurrence.interval || 1}
+              onChange={(e) => updateRule({ interval: e.target.value })}
+              style={{ width: 60, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)', textAlign: 'center' }}
+            />
+            <select
+              value={recurrence.type || 'weekly'}
+              onChange={(e) => updateRule({ type: e.target.value })}
+              style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+            >
+              <option value="daily">day(s)</option>
+              <option value="weekly">week(s)</option>
+              <option value="monthly">month(s)</option>
+              <option value="yearly">year(s)</option>
+            </select>
+          </div>
+
+          {recurrence.until && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Repeats until {recurrence.until}.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
 
 function EventModal({ mode, initialEvent, initialDraft, onClose, onSaved, onDeleted }) {
   const [name, setName] = useState(initialEvent?.name || initialDraft?.name || '')
@@ -786,8 +1083,9 @@ function EventModal({ mode, initialEvent, initialDraft, onClose, onSaved, onDele
   const [completed, setCompleted] = useState(!!initialEvent?.completed)
   const [draftTasks, setDraftTasks] = useState([])
   const [newDraftTaskName, setNewDraftTaskName] = useState('')
+  const [draftReminders, setDraftReminders] = useState(() => initialDraft?.reminders || [])
+  const [draftRecurrence, setDraftRecurrence] = useState(() => initialDraft?.recurrence || null)
   const [showDraftNote, setShowDraftNote] = useState(!!initialDraft)
-
 
   function handleAddDraftTask(e) {
     e.preventDefault()
@@ -797,33 +1095,120 @@ function EventModal({ mode, initialEvent, initialDraft, onClose, onSaved, onDele
     setNewDraftTaskName('')
   }
 
-
   function handleRemoveDraftTask(index) {
-    setDraftTasks((prev) => prev.filter((_, i) => i !== index))
+    setDraftTasks((prev) => prev.filter((_, taskIndex) => taskIndex !== index))
   }
 
+  function resolveDraftReminders() {
+    const resolved = []
+    const now = Date.now()
+
+    for (let index = 0; index < draftReminders.length; index += 1) {
+      const reminder = draftReminders[index]
+      let remindAt = null
+
+      if (reminder.kind === 'absolute') {
+        remindAt = new Date(reminder.remindAt)
+        if (Number.isNaN(remindAt.getTime())) {
+          throw new Error(`Reminder ${index + 1} has an invalid date/time.`)
+        }
+      } else if (reminder.kind === 'relative') {
+        const anchor = reminder.anchor === 'end' ? 'end' : 'start'
+        const anchorValue = anchor === 'end' ? endTime : startTime
+
+        if (!anchorValue) {
+          throw new Error(
+            anchor === 'end'
+              ? `Reminder ${index + 1} is set before the end, but this event has no end time. Add an end time or remove that reminder.`
+              : `Reminder ${index + 1} is set before the start, but this event has no start time. Add a start time or remove that reminder.`
+          )
+        }
+
+        const offsetMinutes = Number(reminder.offsetMinutes)
+        if (!Number.isFinite(offsetMinutes) || offsetMinutes <= 0) {
+          throw new Error(`Reminder ${index + 1} has an invalid offset.`)
+        }
+
+        const anchorDate = new Date(anchorValue)
+        if (Number.isNaN(anchorDate.getTime())) {
+          throw new Error(`Reminder ${index + 1} has an invalid anchor date/time.`)
+        }
+
+        remindAt = new Date(anchorDate.getTime() - offsetMinutes * 60 * 1000)
+      } else {
+        throw new Error(`Reminder ${index + 1} has an unsupported type.`)
+      }
+
+      if (remindAt.getTime() <= now) {
+        throw new Error(`Reminder ${index + 1} resolves to a time in the past. Change or remove it before saving.`)
+      }
+
+      resolved.push(remindAt.toISOString())
+    }
+
+    return resolved
+  }
+
+  function getValidatedDraftRecurrence() {
+    if (!draftRecurrence) return null
+
+    const interval = parseInt(draftRecurrence.interval, 10)
+    if (!interval || interval < 1) {
+      throw new Error('Repeat interval must be at least 1.')
+    }
+
+    const frequency = draftRecurrence.type
+    if (!['daily', 'weekly', 'monthly', 'yearly'].includes(frequency)) {
+      throw new Error('Choose a valid repeat frequency.')
+    }
+
+    return {
+      frequency,
+      interval,
+      until: draftRecurrence.until || null,
+      count: null
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
+
     const errors = []
-    if (!name) errors.push('Name is required')
-    if (startTime && endTime && new Date(startTime) > new Date(endTime)) errors.push('Start time must be before end time')
+    if (!name.trim()) errors.push('Name is required')
+    if (startTime && endTime && new Date(startTime) > new Date(endTime)) {
+      errors.push('Start time must be before end time')
+    }
+
+    let resolvedReminderTimes = []
+    let recurrencePayload = null
+
+    try {
+      if (mode === 'add') {
+        resolvedReminderTimes = resolveDraftReminders()
+        recurrencePayload = getValidatedDraftRecurrence()
+      }
+    } catch (err) {
+      errors.push(err.message || 'Could not validate draft event details.')
+    }
+
     if (errors.length) {
       alert(errors.join('\n'))
       return
     }
 
-
-    if (mode === 'add' && startTime && new Date(startTime).getTime() < Date.now()) {
+    if (
+      mode === 'add' &&
+      startTime &&
+      new Date(startTime).getTime() < Date.now() - 60 * 60 * 1000
+    ) {
       const proceed = window.confirm(
-        'This event starts in the past. This app is meant to track upcoming things \u2014 create it anyway?'
+        'This event started more than one hour ago. This app is meant to track upcoming things — create it anyway?'
       )
       if (!proceed) return
     }
 
-
     const payload = {
-      name,
+      name: name.trim(),
       description: description || null,
       start_time: startTime ? new Date(startTime).toISOString() : null,
       end_time: endTime ? new Date(endTime).toISOString() : null,
@@ -831,7 +1216,6 @@ function EventModal({ mode, initialEvent, initialDraft, onClose, onSaved, onDele
       requires_action: requiresAction || draftTasks.length > 0,
       completed: mode === 'add' ? false : completed
     }
-
 
     if (mode === 'edit' && initialEvent) {
       try {
@@ -845,71 +1229,70 @@ function EventModal({ mode, initialEvent, initialDraft, onClose, onSaved, onDele
       return
     }
 
-
     let newEventId = null
     const createdTaskIds = []
+    const createdReminderIds = []
+
     try {
       const created = await createEvent(payload)
       newEventId = created?.id
 
-
-      if (draftTasks.length > 0) {
-        if (!newEventId) {
-          throw new Error('Event was created but no id was returned, so sub-tasks cannot be attached.')
-        }
-        for (let index = 0; index < draftTasks.length; index += 1) {
-          const result = await createEventTask(newEventId, { name: draftTasks[index], sort_order: index })
-          if (result?.id) createdTaskIds.push(result.id)
-        }
+      if (!newEventId) {
+        throw new Error('Event was created but no id was returned, so its related details cannot be attached.')
       }
 
-
-      // Auto-chain: if this event was created from a Quick Add draft that
-      // detected recurrence, save the recurrence rule immediately — no
-      // separate manual "open Repeats" step, ever. byDay is intentionally
-      // NOT sent (setRecurrence has no such field); it's absorbed naturally
-      // since start_time is already anchored to the correct weekday by the
-      // parser. Failure here is non-fatal: the event itself still exists,
-      // the user just needs to set Repeats manually as a fallback.
-      if (initialDraft?.recurrence && newEventId) {
-        try {
-          await setRecurrence(newEventId, {
-            frequency: initialDraft.recurrence.type,
-            interval: initialDraft.recurrence.interval || 1,
-            until: initialDraft.recurrence.until || null,
-            count: null
-          })
-        } catch (recurrenceErr) {
-          console.error(recurrenceErr)
-          alert('Event was created, but the recurrence rule could not be saved automatically. Open the event and set Repeats manually.')
-        }
+      for (let index = 0; index < draftTasks.length; index += 1) {
+        const result = await createEventTask(newEventId, {
+          name: draftTasks[index],
+          sort_order: index
+        })
+        if (result?.id) createdTaskIds.push(result.id)
       }
 
+      for (const remindAt of resolvedReminderTimes) {
+        const result = await createReminder(newEventId, { remind_at: remindAt })
+        if (result?.id) createdReminderIds.push(result.id)
+      }
+
+      if (recurrencePayload) {
+        await setRecurrence(newEventId, recurrencePayload)
+      }
 
       await onSaved()
       onClose()
     } catch (err) {
       console.error(err)
+
       if (newEventId) {
         try {
+          for (const reminderId of createdReminderIds) {
+            await deleteReminder(reminderId)
+          }
+
           for (const taskId of createdTaskIds) {
             await deleteEventTask(newEventId, taskId)
           }
+
           await deleteEvent(newEventId)
           await onSaved()
         } catch (rollbackErr) {
           console.error('Rollback failed:', rollbackErr)
-          alert('Save failed, and automatic cleanup also failed. Please check your event list for a partially-created "' + name + '" entry and remove it manually.')
+          alert(
+            'Save failed, and automatic cleanup also failed. Please check your event list for a partially-created "' +
+              name +
+              '" entry and remove it manually.'
+          )
           return
         }
       }
-      alert('Could not save this event with its sub-tasks, so nothing was created. Please try again.')
+
+      alert('Could not save this event with its draft details, so nothing was created. Please try again.')
     }
   }
 
-
   async function handleDelete() {
     if (!initialEvent) return
+
     try {
       await deleteEvent(initialEvent.id)
       await onDeleted()
@@ -920,93 +1303,331 @@ function EventModal({ mode, initialEvent, initialDraft, onClose, onSaved, onDele
     }
   }
 
-
   return (
-    <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'var(--modal-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }} onClick={onClose}>
-      <div style={{ background: 'var(--surface)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'var(--modal-overlay)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        zIndex: 50
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: 'var(--surface)',
+          borderRadius: 12,
+          padding: 20,
+          width: '100%',
+          maxWidth: 480,
+          maxHeight: '90vh',
+          overflowY: 'auto'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{mode === 'edit' ? 'Edit event' : 'Add event'}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" style={{ border: 'none', background: 'transparent', fontSize: 20, cursor: 'pointer', lineHeight: 1, color: 'var(--text-primary)' }}>&times;</button>
+          <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>
+            {mode === 'edit' ? 'Edit event' : 'Add event'}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              border: 'none',
+              background: 'transparent',
+              fontSize: 20,
+              cursor: 'pointer',
+              lineHeight: 1,
+              color: 'var(--text-primary)'
+            }}
+          >
+            &times;
+          </button>
         </div>
 
-
         {showDraftNote && initialDraft && (
-          <div style={{ border: '1px solid var(--border-default)', borderRadius: 8, padding: 10, marginBottom: 10, background: 'var(--surface-muted)' }}>
+          <div
+            style={{
+              border: '1px solid var(--border-default)',
+              borderRadius: 8,
+              padding: 10,
+              marginBottom: 10,
+              background: 'var(--surface-muted)'
+            }}
+          >
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              Pre-filled from Quick Add — review before saving.
-              {initialDraft.recurrence && ' Recurrence will be saved automatically when you save this event.'}
+              Pre-filled from Quick Add — review and edit all details before saving.
+              {initialDraft.parseNotes?.length > 0 && (
+                <>
+                  <br />
+                  {initialDraft.parseNotes.join(' ')}
+                </>
+              )}
             </div>
-            <button type="button" onClick={() => setShowDraftNote(false)} style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+            <button
+              type="button"
+              onClick={() => setShowDraftNote(false)}
+              style={{
+                marginTop: 4,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--accent-primary)',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                padding: 0
+              }}
+            >
               Dismiss
             </button>
           </div>
         )}
 
-
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 10 }}>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Event name" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
-          <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Event name"
+            style={{
+              padding: 10,
+              borderRadius: 8,
+              border: '1px solid var(--border-default)',
+              background: 'var(--surface)',
+              color: 'var(--text-primary)'
+            }}
+          />
+
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            style={{
+              padding: 10,
+              borderRadius: 8,
+              border: '1px solid var(--border-default)',
+              background: 'var(--surface)',
+              color: 'var(--text-primary)'
+            }}
+          >
             <option value="">Select category</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            {CATEGORIES.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
           </select>
-          <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
-          <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
+
+          <input
+            type="datetime-local"
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
+            style={{
+              padding: 10,
+              borderRadius: 8,
+              border: '1px solid var(--border-default)',
+              background: 'var(--surface)',
+              color: 'var(--text-primary)'
+            }}
+          />
+
+          <input
+            type="datetime-local"
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+            style={{
+              padding: 10,
+              borderRadius: 8,
+              border: '1px solid var(--border-default)',
+              background: 'var(--surface)',
+              color: 'var(--text-primary)'
+            }}
+          />
+
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
-            <input type="checkbox" checked={requiresAction} onChange={(e) => setRequiresAction(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={requiresAction}
+              onChange={(e) => setRequiresAction(e.target.checked)}
+            />
             Requires action
           </label>
+
           {mode === 'edit' && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
-              <input type="checkbox" checked={completed} onChange={(e) => setCompleted(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={completed}
+                onChange={(e) => setCompleted(e.target.checked)}
+              />
               Completed
             </label>
           )}
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" style={{ minHeight: 80, padding: 10, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
 
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Description"
+            style={{
+              minHeight: 80,
+              padding: 10,
+              borderRadius: 8,
+              border: '1px solid var(--border-default)',
+              background: 'var(--surface)',
+              color: 'var(--text-primary)'
+            }}
+          />
 
           {mode === 'add' && (
-            <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 10, marginTop: 2 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                Sub-tasks {draftTasks.length > 0 && `(${draftTasks.length})`}
-              </div>
-              {draftTasks.map((taskName, index) => (
-                <div key={`${taskName}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ flex: 1, fontSize: 14, color: 'var(--text-primary)' }}>{taskName}</span>
-                  <button type="button" onClick={() => handleRemoveDraftTask(index)} aria-label="Remove sub-task" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>&times;</button>
+            <>
+              <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 10, marginTop: 2 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                  Sub-tasks {draftTasks.length > 0 && `(${draftTasks.length})`}
                 </div>
-              ))}
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                  value={newDraftTaskName}
-                  onChange={(e) => setNewDraftTaskName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDraftTask(e) } }}
-                  placeholder="Add a sub-task"
-                  style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--surface)', color: 'var(--text-primary)' }}
-                />
-                <button type="button" onClick={handleAddDraftTask} style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer' }}>Add</button>
-              </div>
-              {draftTasks.length > 0 && (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Adding sub-tasks marks this event as requiring action. If saving fails, nothing will be created.</div>
-              )}
-            </div>
-          )}
 
+                {draftTasks.map((taskName, index) => (
+                  <div key={`${taskName}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ flex: 1, fontSize: 14, color: 'var(--text-primary)' }}>{taskName}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveDraftTask(index)}
+                      aria-label="Remove sub-task"
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        fontSize: 16,
+                        lineHeight: 1
+                      }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={newDraftTaskName}
+                    onChange={(e) => setNewDraftTaskName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleAddDraftTask(e)
+                      }
+                    }}
+                    placeholder="Add a sub-task"
+                    style={{
+                      flex: 1,
+                      padding: 8,
+                      borderRadius: 8,
+                      border: '1px solid var(--border-default)',
+                      background: 'var(--surface)',
+                      color: 'var(--text-primary)'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddDraftTask}
+                    style={{
+                      padding: '8px 12px',
+                      border: 'none',
+                      borderRadius: 8,
+                      background: 'var(--text-primary)',
+                      color: 'var(--surface)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {draftTasks.length > 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+                    Adding sub-tasks marks this event as requiring action. If saving fails, nothing will be created.
+                  </div>
+                )}
+              </div>
+
+              <DraftReminderSection
+                startTime={startTime}
+                endTime={endTime}
+                reminders={draftReminders}
+                onChange={setDraftReminders}
+              />
+
+              <DraftRecurrenceSection
+                recurrence={draftRecurrence}
+                onChange={setDraftRecurrence}
+              />
+            </>
+          )}
 
           {mode === 'edit' && initialEvent && (
             <>
               <TaskChecklist eventId={initialEvent.id} requiresAction={requiresAction} />
-              <ReminderSection eventId={initialEvent.id} startTime={initialEvent.start_time} endTime={initialEvent.end_time} />
+              <ReminderSection
+                eventId={initialEvent.id}
+                startTime={initialEvent.start_time}
+                endTime={initialEvent.end_time}
+              />
               <RecurrenceSection eventId={initialEvent.id} />
             </>
           )}
 
-
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            <button type="submit" style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 8, background: 'var(--text-primary)', color: 'var(--surface)', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+            <button
+              type="submit"
+              style={{
+                flex: 1,
+                padding: '10px 16px',
+                border: 'none',
+                borderRadius: 8,
+                background: 'var(--text-primary)',
+                color: 'var(--surface)',
+                cursor: 'pointer',
+                fontWeight: 600
+              }}
+            >
+              Save
+            </button>
+
             {mode === 'edit' && (
-              <button type="button" onClick={handleDelete} style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 8, background: 'var(--accent-danger)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Delete</button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  border: 'none',
+                  borderRadius: 8,
+                  background: 'var(--accent-danger)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Delete
+              </button>
             )}
-            <button type="button" onClick={onClose} style={{ padding: '10px 16px', border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--surface)', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '10px 16px',
+                border: '1px solid var(--border-default)',
+                borderRadius: 8,
+                background: 'var(--surface)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
           </div>
         </form>
       </div>

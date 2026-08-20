@@ -1,13 +1,3 @@
-// shared/quickAddParser.js
-//
-// Free, offline, rule-based natural language parser for the Quick Add
-// bubble. Lives in shared/ (not mobile/src/ or web/src/) following the
-// same convention as shared/eventLogic.js.
-//
-// Uses chrono-node for date/time extraction, plus custom regex for
-// recurrence (including interval, "every other", byDay, and end
-// conditions). Zero cost, zero network calls.
-
 import * as chrono from 'chrono-node'
 
 const UNIT_TO_FREQUENCY = {
@@ -17,52 +7,48 @@ const UNIT_TO_FREQUENCY = {
   year: 'yearly'
 }
 
-// Order matters: more specific patterns must be checked before the bare
-// "every X" fallback, otherwise e.g. "every other week" would be caught
-// by the generic weekly pattern first and lose the interval-2 meaning.
 const RECURRENCE_PATTERNS = [
-  // "every other day/week/month/year" -> interval 2
   {
     regex: /\bevery other (day|week|month|year)\b/i,
     build: (m) => ({ type: UNIT_TO_FREQUENCY[m[1].toLowerCase()], interval: 2 })
   },
-  // "every 2 days" / "every 3 weeks" etc -> explicit numeric interval
   {
     regex: /\bevery (\d+) (day|week|month|year)s?\b/i,
     build: (m) => ({ type: UNIT_TO_FREQUENCY[m[2].toLowerCase()], interval: Math.max(1, parseInt(m[1], 10)) })
   },
-  // "every Friday" -> weekly, anchored to that weekday via start_time
   {
     regex: /\bevery\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
     build: (m) => ({ type: 'weekly', interval: 1, byDay: m[1].toLowerCase() })
   },
-  // Bare "every day" / "daily" etc -> interval 1
   { regex: /\bevery\s+day\b|\bdaily\b/i, build: () => ({ type: 'daily', interval: 1 }) },
   { regex: /\bevery\s+week\b|\bweekly\b/i, build: () => ({ type: 'weekly', interval: 1 }) },
   { regex: /\bevery\s+month\b|\bmonthly\b/i, build: () => ({ type: 'monthly', interval: 1 }) },
   { regex: /\bevery\s+year\b|\bannually\b|\byearly\b/i, build: () => ({ type: 'yearly', interval: 1 }) }
 ]
 
-// Matches "for the next month" / "for the next 2 weeks" etc. Applied as a
-// MODIFIER after a recurrence pattern above has already matched — on its
-// own, "for the next month" doesn't imply a repeating schedule.
 const UNTIL_DURATION_PATTERN = /\bfor the next (\d+)?\s*(day|week|month|year)s?\b/i
-
-// Fallback: "for the next N days" with NO other recurrence keyword present
-// implies daily recurrence ending after N days (e.g. "take medicine for
-// the next 5 days"). Deliberately restricted to the "day" unit and
-// requires the word "for" — "next 3 days" alone (no "for") reads as a
-// one-time multi-day SPAN (e.g. "trip next 3 days"), not a repeating
-// schedule, so it must NOT trigger recurrence. Only "days" is safe to
-// infer this way; "for the next 2 weeks" alone is genuinely ambiguous
-// between daily and weekly intent, so it's left undetected rather than
-// guessed at.
 const STANDALONE_DAILY_UNTIL_PATTERN = /\bfor the next (\d+)\s*days?\b/i
-
-// Rough day-counts for month/year, matching how the backend already
-// treats 'until' as a plain calendar date with no special month-length
-// handling (see backend/index.php's occurrence expansion).
 const APPROX_DAYS_PER_UNIT = { day: 1, week: 7, month: 30, year: 365 }
+
+const RELATIVE_REMINDER_PATTERN = /\b(?:remind me|notify me)\s+(\d+(?:\.\d+)?)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?)\s+before(?:\s+(?:the\s+)?(start|end|event)|\s+it\s+(starts|ends|ending|finishes))?\b/gi
+const ABSOLUTE_REMINDER_PATTERN = /\b(?:remind me|notify me)\s+(?:at|on)\s+(.+?)(?=$|[,.;]|\b(?:every|daily|weekly|monthly|yearly|for the next)\b)/gi
+
+const REMINDER_UNITS = {
+  min: { unit: 'minutes', minutesPerUnit: 1 },
+  mins: { unit: 'minutes', minutesPerUnit: 1 },
+  minute: { unit: 'minutes', minutesPerUnit: 1 },
+  minutes: { unit: 'minutes', minutesPerUnit: 1 },
+  hr: { unit: 'hours', minutesPerUnit: 60 },
+  hrs: { unit: 'hours', minutesPerUnit: 60 },
+  hour: { unit: 'hours', minutesPerUnit: 60 },
+  hours: { unit: 'hours', minutesPerUnit: 60 },
+  day: { unit: 'days', minutesPerUnit: 24 * 60 },
+  days: { unit: 'days', minutesPerUnit: 24 * 60 },
+  week: { unit: 'weeks', minutesPerUnit: 7 * 24 * 60 },
+  weeks: { unit: 'weeks', minutesPerUnit: 7 * 24 * 60 },
+  month: { unit: 'months', minutesPerUnit: 30 * 24 * 60 },
+  months: { unit: 'months', minutesPerUnit: 30 * 24 * 60 }
+}
 
 function computeUntilDate(now, amount, unit) {
   const count = amount ? parseInt(amount, 10) : 1
@@ -72,20 +58,70 @@ function computeUntilDate(now, amount, unit) {
   return until
 }
 
-/**
- * Parses free-text input into a draft event object.
- * Never throws — always returns a best-effort draft, even if nothing
- * date/time-like was found or chrono returns an unusable result.
- *
- * @param {string} rawText
- * @returns {{
- *   name: string,
- *   startTime: Date,
- *   endTime: Date | null,
- *   recurrence: { type: string, interval: number, byDay?: string, until?: string } | null,
- *   parseNotes: string[]
- * }}
- */
+function normalizeReminderAnchor(explicitAnchor, pronounAnchor) {
+  const value = (explicitAnchor || pronounAnchor || '').toLowerCase()
+  return ['end', 'ends', 'ending', 'finishes'].includes(value) ? 'end' : 'start'
+}
+
+function extractReminders(text, now, notes) {
+  const reminders = []
+  let remainingText = text
+
+  remainingText = remainingText.replace(RELATIVE_REMINDER_PATTERN, (match, rawAmount, rawUnit, explicitAnchor, pronounAnchor) => {
+    const amount = parseFloat(rawAmount)
+    const unitKey = rawUnit.toLowerCase()
+
+    if (/^(seconds?|secs?)$/.test(unitKey)) {
+      notes.push(`Reminder “${rawAmount} ${rawUnit} before” was not added because seconds are not supported. Use minutes or set a custom reminder time.`)
+      return ' '
+    }
+
+    if (/^years?$/.test(unitKey)) {
+      notes.push(`Reminder “${rawAmount} ${rawUnit} before” was not added because years are not supported. Use months, weeks, days, or a custom reminder time.`)
+      return ' '
+    }
+
+    const unit = REMINDER_UNITS[unitKey]
+    if (!unit || !Number.isFinite(amount) || amount <= 0) {
+      notes.push(`Reminder “${match.trim()}” was not added because its amount or unit could not be understood. Please add it manually.`)
+      return ' '
+    }
+
+    reminders.push({
+      kind: 'relative',
+      anchor: normalizeReminderAnchor(explicitAnchor, pronounAnchor),
+      amount,
+      unit: unit.unit,
+      offsetMinutes: amount * unit.minutesPerUnit
+    })
+    return ' '
+  })
+
+  remainingText = remainingText.replace(ABSOLUTE_REMINDER_PATTERN, (match, rawDateText) => {
+    const dateText = rawDateText.trim()
+    if (!dateText) {
+      notes.push('A reminder time was not understood. Please add it manually.')
+      return ' '
+    }
+
+    try {
+      const results = chrono.parse(dateText, now, { forwardDate: true })
+      const best = results[0]
+      const date = best?.start?.date?.()
+      if (!date || Number.isNaN(date.getTime()) || date.getTime() <= now.getTime()) {
+        notes.push(`Reminder “${match.trim()}” was not added because its date/time is ambiguous or in the past. Please add it manually.`)
+      } else {
+        reminders.push({ kind: 'absolute', remindAt: date.toISOString() })
+      }
+    } catch (err) {
+      notes.push(`Reminder “${match.trim()}” was not added because its date/time could not be parsed. Please add it manually.`)
+    }
+    return ' '
+  })
+
+  return { reminders, remainingText }
+}
+
 export function parseQuickAddText(rawText) {
   const notes = []
   let text = (rawText || '').trim()
@@ -96,12 +132,15 @@ export function parseQuickAddText(rawText) {
       startTime: new Date(),
       endTime: null,
       recurrence: null,
+      reminders: [],
       parseNotes: ['No text entered — fill in details manually.']
     }
   }
 
-  // 1. Recurrence keyword (interval/every-other/byDay variants), removed
-  // from the text so it doesn't confuse chrono-node or linger in the name.
+  const reminderResult = extractReminders(text, new Date(), notes)
+  const reminders = reminderResult.reminders
+  text = reminderResult.remainingText
+
   let recurrence = null
   for (const { regex, build } of RECURRENCE_PATTERNS) {
     const match = text.match(regex)
@@ -113,8 +152,6 @@ export function parseQuickAddText(rawText) {
     }
   }
 
-  // 2a. If recurrence was already found above, look for an end-condition
-  // modifier like "for the next 2 weeks" and convert it into an until date.
   if (recurrence) {
     const untilMatch = text.match(UNTIL_DURATION_PATTERN)
     if (untilMatch) {
@@ -124,11 +161,6 @@ export function parseQuickAddText(rawText) {
       notes.push(`Recurrence ends: ${recurrence.until}`)
     }
   } else {
-    // 2b. No "every X" keyword found at all — check the narrow fallback:
-    // "for the next N days" (word "for" required) implies daily
-    // recurrence ending after N days, e.g. "take medicine for the next
-    // 5 days". Deliberately does NOT fire on "next 3 days" without "for"
-    // (that reads as a one-time span, e.g. "trip next 3 days").
     const standaloneMatch = text.match(STANDALONE_DAILY_UNTIL_PATTERN)
     if (standaloneMatch) {
       const untilDate = computeUntilDate(new Date(), standaloneMatch[1], 'day')
@@ -138,17 +170,12 @@ export function parseQuickAddText(rawText) {
     }
   }
 
-  // 3. Run chrono-node on what's left to find date/time. Wrapped
-  // defensively — under-specified phrases (e.g. a bare weekday with no
-  // actual time) have been observed to produce results where
-  // best.start.date() can throw, which previously crashed the app.
   let startTime = new Date()
   let endTime = null
   let nameText = text
 
   try {
     const results = chrono.parse(text, new Date(), { forwardDate: true })
-
     if (results.length > 0) {
       const best = results[0]
       const parsedStart = best.start && typeof best.start.date === 'function' ? best.start.date() : null
@@ -156,9 +183,7 @@ export function parseQuickAddText(rawText) {
         startTime = parsedStart
         if (best.end && typeof best.end.date === 'function') {
           const parsedEnd = best.end.date()
-          if (parsedEnd && !Number.isNaN(parsedEnd.getTime())) {
-            endTime = parsedEnd
-          }
+          if (parsedEnd && !Number.isNaN(parsedEnd.getTime())) endTime = parsedEnd
         }
         nameText = (text.slice(0, best.index) + text.slice(best.index + best.text.length)).trim()
         notes.push(`Detected time: "${best.text}"`)
@@ -172,7 +197,6 @@ export function parseQuickAddText(rawText) {
     notes.push('Could not parse a date/time — defaulted to now, please set manually.')
   }
 
-  // 4. Clean up leftover filler words/punctuation from the name.
   nameText = nameText
     .replace(/\s{2,}/g, ' ')
     .replace(/^[\s,.\-–:]+|[\s,.\-–:]+$/g, '')
@@ -183,11 +207,5 @@ export function parseQuickAddText(rawText) {
     notes.push('Could not isolate an event name — please edit.')
   }
 
-  return {
-    name: nameText,
-    startTime,
-    endTime,
-    recurrence,
-    parseNotes: notes
-  }
+  return { name: nameText, startTime, endTime, recurrence, reminders, parseNotes: notes }
 }

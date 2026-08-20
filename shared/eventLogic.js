@@ -18,9 +18,7 @@ export function addDays(date, amount) {
 
 export function startOfWeek(date) {
   const d = startOfDay(date)
-  const day = d.getDay()
-  const diff = (day === 0 ? -6 : 1 - day)
-  d.setDate(d.getDate() + diff)
+  d.setDate(d.getDate() - d.getDay())
   return d
 }
 

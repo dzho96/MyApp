@@ -1,27 +1,6 @@
-// web/src/components/QuickAddBubble.jsx
-//
-// Web equivalent of the mobile QuickAddBubble. Same parser
-// (shared/quickAddParser.js — chrono-node + regex, offline, free),
-// different UI shell since web's App.jsx has no navigation/route-params
-// system — it's one component with local state. So instead of navigating
-// to a screen, this bubble calls a setter function passed in as a prop to
-// populate the SAME name/startTime/endTime state that EventModal's "Add
-// event" form already uses, then opens that modal. The existing
-// handleSubmit + Save button remains the one and only approval step.
-//
-// `disabled` mirrors mobile's `activeRouteName === 'EventDetail'` guard:
-// web has no navigator to read a route name from, so App.jsx passes down
-// whether an EventModal is currently open (`!!modalState`) instead. When
-// disabled, the bubble (and its own sheet, if it happened to be open)
-// don't render at all — avoids stacking a second quick-add on top of an
-// event form already being filled out.
-
 import React, { useState } from 'react'
 import { parseQuickAddText } from '../../../shared/quickAddParser'
 
-// Converts a JS Date into the value shape expected by
-// <input type="datetime-local">, matching how startTime/endTime are
-// already stored as strings in EventModal's controlled inputs.
 function toLocalInputValue(date) {
   if (!date) return ''
   const pad = (n) => String(n).padStart(2, '0')
@@ -39,15 +18,15 @@ export default function QuickAddBubble({ onParsed, disabled }) {
       name: draft.name,
       startTime: toLocalInputValue(draft.startTime),
       endTime: draft.endTime ? toLocalInputValue(draft.endTime) : '',
-      recurrence: draft.recurrence
+      recurrence: draft.recurrence,
+      reminders: draft.reminders,
+      parseNotes: draft.parseNotes
     })
 
     setOpen(false)
     setText('')
   }
 
-  // Don't render the bubble (or its sheet) at all while an EventModal is
-  // already open. Matches mobile's early-return-on-EventDetail pattern.
   if (disabled) return null
 
   return (

@@ -6,17 +6,16 @@ import { fetchEventsWithOccurrences } from '../api'
 import { useThemeMode } from '../theme'
 import CollapsibleSection from '../components/CollapsibleSection'
 
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function formatMonthYear(date) {
   return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 }
 
-
 export default function CalendarScreen({ navigation }) {
   const { mode, colors } = useThemeMode()
   const [events, setEvents] = useState([])
   const [selectedDate, setSelectedDate] = useState(new Date())
-
 
   const loadEvents = useCallback(async () => {
     try {
@@ -26,13 +25,10 @@ export default function CalendarScreen({ navigation }) {
     }
   }, [])
 
-
   useFocusEffect(useCallback(() => { loadEvents() }, [loadEvents]))
-
 
   const monthGrid = useMemo(() => getMonthGrid(selectedDate), [selectedDate])
   const selectedDayEvents = useMemo(() => getVisibleDayEvents(events, selectedDate), [events, selectedDate])
-
 
   function changeMonth(offset) {
     const next = new Date(selectedDate)
@@ -40,15 +36,14 @@ export default function CalendarScreen({ navigation }) {
     setSelectedDate(next)
   }
 
-
   function openEvent(event) {
     navigation.navigate('EventDetail', { eventId: event.id })
   }
 
-
   const weeks = []
-  for (let i = 0; i < monthGrid.length; i += 7) weeks.push(monthGrid.slice(i, i + 7))
-
+  for (let i = 0; i < monthGrid.length; i += 7) {
+    weeks.push(monthGrid.slice(i, i + 7))
+  }
 
   return (
     <ScrollView style={{ backgroundColor: colors.surfaceMuted }} contentContainerStyle={styles.container}>
@@ -56,20 +51,32 @@ export default function CalendarScreen({ navigation }) {
         <TouchableOpacity onPress={() => changeMonth(-1)}>
           <Text style={{ color: colors.textPrimary, fontSize: 16 }}>‹ Prev</Text>
         </TouchableOpacity>
-        <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{formatMonthYear(selectedDate)}</Text>
+        <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>
+          {formatMonthYear(selectedDate)}
+        </Text>
         <TouchableOpacity onPress={() => changeMonth(1)}>
           <Text style={{ color: colors.textPrimary, fontSize: 16 }}>Next ›</Text>
         </TouchableOpacity>
       </View>
 
-
       <View style={[styles.grid, { backgroundColor: colors.surface, borderColor: colors.borderDefault }]}>
+        <View style={styles.weekdayRow}>
+          {WEEKDAY_LABELS.map((label) => (
+            <View key={label} style={styles.weekdayCell}>
+              <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 11 }}>
+                {label}
+              </Text>
+            </View>
+          ))}
+        </View>
+
         {weeks.map((week, wi) => (
           <View key={wi} style={styles.weekRow}>
             {week.map((date) => {
               const isCurrentMonth = date.getMonth() === selectedDate.getMonth()
               const isSelected = startOfDay(date).getTime() === startOfDay(selectedDate).getTime()
               const dayEvents = events.filter((event) => eventMatchesDate(event, date))
+
               return (
                 <TouchableOpacity
                   key={date.toISOString()}
@@ -86,8 +93,15 @@ export default function CalendarScreen({ navigation }) {
                   <Text style={{ color: isCurrentMonth ? colors.textPrimary : colors.textMuted, fontWeight: '700', fontSize: 12 }}>
                     {date.getDate()}
                   </Text>
+
                   {dayEvents.slice(0, 2).map((event) => (
-                    <View key={event.occurrenceKey || event.id} style={[styles.eventDot, { backgroundColor: getCategoryColor(event.category, mode) }]} />
+                    <View
+                      key={event.occurrenceKey || event.id}
+                      style={[
+                        styles.eventDot,
+                        { backgroundColor: getCategoryColor(event.category, mode) }
+                      ]}
+                    />
                   ))}
                 </TouchableOpacity>
               )
@@ -95,7 +109,6 @@ export default function CalendarScreen({ navigation }) {
           </View>
         ))}
       </View>
-
 
       <CollapsibleSection
         title={selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -106,11 +119,17 @@ export default function CalendarScreen({ navigation }) {
         hasItems={selectedDayEvents.length > 0}
       >
         {selectedDayEvents.map((event) => (
-          <TouchableOpacity key={event.occurrenceKey || event.id} onPress={() => openEvent(event)} style={[styles.dayEventRow, { backgroundColor: colors.surfaceMuted }]}>
+          <TouchableOpacity
+            key={event.occurrenceKey || event.id}
+            onPress={() => openEvent(event)}
+            style={[styles.dayEventRow, { backgroundColor: colors.surfaceMuted }]}
+          >
             <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>
               {event.name}{event.isRecurringInstance ? ' ↻' : ''}
             </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{event.category}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+              {event.category}
+            </Text>
           </TouchableOpacity>
         ))}
       </CollapsibleSection>
@@ -118,13 +137,53 @@ export default function CalendarScreen({ navigation }) {
   )
 }
 
-
 const styles = StyleSheet.create({
   container: { padding: 16 },
-  monthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderWidth: 1, borderRadius: 12, marginBottom: 12 },
-  grid: { borderWidth: 1, borderRadius: 12, padding: 8, marginBottom: 16 },
-  weekRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  dayCell: { width: '13.5%', aspectRatio: 1, borderRadius: 6, padding: 4, marginVertical: 2 },
-  eventDot: { width: 5, height: 5, borderRadius: 3, marginTop: 3 },
-  dayEventRow: { borderRadius: 6, padding: 10, marginBottom: 6 }
+  monthHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 12
+  },
+  grid: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 16
+  },
+  weekdayRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4
+  },
+  weekdayCell: {
+    width: '13.5%',
+    alignItems: 'center',
+    paddingVertical: 4
+  },
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between'
+  },
+  dayCell: {
+    width: '13.5%',
+    aspectRatio: 1,
+    borderRadius: 6,
+    padding: 4,
+    marginVertical: 2
+  },
+  eventDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    marginTop: 3
+  },
+  dayEventRow: {
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 6
+  }
 })
