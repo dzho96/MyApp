@@ -9,10 +9,12 @@ import { useThemeMode } from '../theme'
 import FormSection from '../components/FormSection'
 
 
+
 export default function EventDetailScreen({ route, navigation }) {
   const { colors } = useThemeMode()
   const eventId = route.params?.eventId ?? null
   const isEdit = eventId !== null
+
 
 
   const [loading, setLoading] = useState(isEdit)
@@ -27,9 +29,11 @@ export default function EventDetailScreen({ route, navigation }) {
   const [showEndPicker, setShowEndPicker] = useState(false)
 
 
+
   const [draftTasks, setDraftTasks] = useState([])
   const [newDraftTaskName, setNewDraftTaskName] = useState('')
   const [tasks, setTasks] = useState([])
+
 
 
   useEffect(() => {
@@ -53,10 +57,12 @@ export default function EventDetailScreen({ route, navigation }) {
   }, [eventId, isEdit])
 
 
+
   async function refreshTasks() {
     const list = await fetchEventTasks(eventId)
     setTasks(list)
   }
+
 
 
   function addDraftTask() {
@@ -67,9 +73,11 @@ export default function EventDetailScreen({ route, navigation }) {
   }
 
 
+
   function removeDraftTask(index) {
     setDraftTasks((prev) => prev.filter((_, i) => i !== index))
   }
+
 
 
   async function handleToggleTask(task) {
@@ -80,6 +88,7 @@ export default function EventDetailScreen({ route, navigation }) {
       Alert.alert('Error', 'Failed to update sub-task')
     }
   }
+
 
 
   async function handleAddExistingTask() {
@@ -95,6 +104,7 @@ export default function EventDetailScreen({ route, navigation }) {
   }
 
 
+
   async function handleDeleteTask(task) {
     try {
       await deleteEventTask(eventId, task.id)
@@ -103,6 +113,7 @@ export default function EventDetailScreen({ route, navigation }) {
       Alert.alert('Error', 'Failed to delete sub-task')
     }
   }
+
 
 
   async function handleSave() {
@@ -114,6 +125,7 @@ export default function EventDetailScreen({ route, navigation }) {
       Alert.alert('Invalid dates', 'Start time must be before end time')
       return
     }
+
 
 
     if (!isEdit && startTime.getTime() < Date.now()) {
@@ -131,6 +143,7 @@ export default function EventDetailScreen({ route, navigation }) {
   }
 
 
+
   async function doSave() {
     const payload = {
       name: name.trim(),
@@ -143,6 +156,7 @@ export default function EventDetailScreen({ route, navigation }) {
     }
 
 
+
     if (isEdit) {
       try {
         await updateEvent(eventId, payload)
@@ -152,6 +166,7 @@ export default function EventDetailScreen({ route, navigation }) {
       }
       return
     }
+
 
 
     let newEventId = null
@@ -182,6 +197,7 @@ export default function EventDetailScreen({ route, navigation }) {
   }
 
 
+
   function handleDelete() {
     Alert.alert('Delete event', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
@@ -199,6 +215,7 @@ export default function EventDetailScreen({ route, navigation }) {
       }
     ])
   }
+
 
 
   // On Android, DateTimePicker's dialog mode must be driven via the
@@ -234,6 +251,7 @@ export default function EventDetailScreen({ route, navigation }) {
   }
 
 
+
   function openEndPicker() {
     const base = endTime || startTime
     if (Platform.OS === 'android') {
@@ -260,6 +278,7 @@ export default function EventDetailScreen({ route, navigation }) {
   }
 
 
+
   if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.surfaceMuted }]}>
@@ -267,6 +286,7 @@ export default function EventDetailScreen({ route, navigation }) {
       </View>
     )
   }
+
 
 
   return (
@@ -280,12 +300,14 @@ export default function EventDetailScreen({ route, navigation }) {
       />
 
 
+
       <View style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, padding: 0 }]}>
         <Picker selectedValue={category} onValueChange={setCategory} style={{ color: colors.textPrimary }}>
           <Picker.Item label="Select category" value="" />
           {CATEGORIES.map((c) => <Picker.Item key={c} label={c} value={c} />)}
         </Picker>
       </View>
+
 
 
       <TouchableOpacity onPress={openStartPicker} style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
@@ -300,6 +322,7 @@ export default function EventDetailScreen({ route, navigation }) {
       )}
 
 
+
       <TouchableOpacity onPress={openEndPicker} style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
         <Text style={{ color: colors.textPrimary }}>End: {endTime ? endTime.toLocaleString() : 'Not set'}</Text>
       </TouchableOpacity>
@@ -312,10 +335,12 @@ export default function EventDetailScreen({ route, navigation }) {
       )}
 
 
+
       <View style={styles.switchRow}>
         <Text style={{ color: colors.textSecondary }}>Requires action</Text>
         <Switch value={requiresAction} onValueChange={setRequiresAction} />
       </View>
+
 
 
       {isEdit && (
@@ -324,6 +349,7 @@ export default function EventDetailScreen({ route, navigation }) {
           <Switch value={completed} onValueChange={setCompleted} />
         </View>
       )}
+
 
 
       <TextInput
@@ -336,6 +362,7 @@ export default function EventDetailScreen({ route, navigation }) {
       />
 
 
+
       {isEdit && (
         <FormSection title="Repeats" subtitle="Make this a recurring event" defaultOpen={false}>
           <RecurrenceSection eventId={eventId} colors={colors} />
@@ -343,11 +370,13 @@ export default function EventDetailScreen({ route, navigation }) {
       )}
 
 
+
       {isEdit && (
         <FormSection title="Reminders" subtitle="Get notified before this event" defaultOpen={false}>
           <ReminderSection eventId={eventId} startTime={startTime} endTime={endTime} colors={colors} />
         </FormSection>
       )}
+
 
 
       <FormSection title="Sub-tasks" subtitle={isEdit ? `${tasks.filter((t) => t.completed).length}/${tasks.length} complete` : (draftTasks.length > 0 ? `${draftTasks.length} added` : null)}>
@@ -374,6 +403,7 @@ export default function EventDetailScreen({ route, navigation }) {
           ))
         )}
 
+
         <View style={styles.addTaskRow}>
           <TextInput
             value={newDraftTaskName}
@@ -392,9 +422,11 @@ export default function EventDetailScreen({ route, navigation }) {
       </FormSection>
 
 
+
       <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, { backgroundColor: colors.textPrimary }]}>
         <Text style={{ color: colors.surface, fontWeight: '700', textAlign: 'center' }}>Save</Text>
       </TouchableOpacity>
+
 
 
       {isEdit && (
@@ -407,6 +439,7 @@ export default function EventDetailScreen({ route, navigation }) {
 }
 
 
+
 // --- Recurrence ---
 // Frequency and interval are unified into a single "Every [N] [unit]" row
 // instead of a separate Daily/Weekly/Monthly picker above it, mirroring
@@ -416,6 +449,7 @@ const RECURRENCE_UNITS = [
   { label: 'week(s)', value: 'weekly' },
   { label: 'month(s)', value: 'monthly' }
 ]
+
 
 function RecurrenceSection({ eventId, colors }) {
   const [loading, setLoading] = useState(true)
@@ -427,6 +461,7 @@ function RecurrenceSection({ eventId, colors }) {
   const [count, setCount] = useState('10')
   const [showUntilPicker, setShowUntilPicker] = useState(false)
   const [saving, setSaving] = useState(false)
+
 
   useEffect(() => {
     fetchRecurrence(eventId)
@@ -450,6 +485,7 @@ function RecurrenceSection({ eventId, colors }) {
       .finally(() => setLoading(false))
   }, [eventId])
 
+
   async function handleToggleEnabled(next) {
     setEnabled(next)
     if (!next) {
@@ -463,6 +499,7 @@ function RecurrenceSection({ eventId, colors }) {
       }
     }
   }
+
 
   function openUntilPicker() {
     if (Platform.OS === 'android') {
@@ -478,6 +515,7 @@ function RecurrenceSection({ eventId, colors }) {
       setShowUntilPicker(true)
     }
   }
+
 
   async function handleSaveRecurrence() {
     const intervalNum = parseInt(interval, 10)
@@ -495,6 +533,7 @@ function RecurrenceSection({ eventId, colors }) {
       return
     }
 
+
     setSaving(true)
     try {
       await setRecurrence(eventId, {
@@ -511,7 +550,9 @@ function RecurrenceSection({ eventId, colors }) {
     }
   }
 
+
   if (loading) return null
+
 
   return (
     <View>
@@ -519,6 +560,7 @@ function RecurrenceSection({ eventId, colors }) {
         <Text style={{ color: colors.textSecondary }}>Enable</Text>
         <Switch value={enabled} onValueChange={handleToggleEnabled} disabled={saving} />
       </View>
+
 
       {enabled && (
         <>
@@ -536,6 +578,7 @@ function RecurrenceSection({ eventId, colors }) {
               </Picker>
             </View>
           </View>
+
 
           <View style={styles.anchorRow}>
             {[
@@ -557,6 +600,7 @@ function RecurrenceSection({ eventId, colors }) {
               </TouchableOpacity>
             ))}
           </View>
+
 
           {endMode === 'until' && (
             <TouchableOpacity
@@ -580,6 +624,7 @@ function RecurrenceSection({ eventId, colors }) {
             />
           )}
 
+
           {endMode === 'count' && (
             <View style={styles.customOffsetRow}>
               <Text style={{ color: colors.textSecondary }}>Stop after</Text>
@@ -592,6 +637,7 @@ function RecurrenceSection({ eventId, colors }) {
               <Text style={{ color: colors.textSecondary }}>occurrences</Text>
             </View>
           )}
+
 
           <TouchableOpacity
             onPress={handleSaveRecurrence}
@@ -609,6 +655,7 @@ function RecurrenceSection({ eventId, colors }) {
 }
 
 
+
 // --- Reminders ---
 // Reminders are split into two tabs (Quick / Custom) rather than stacking
 // presets, custom offset, and exact date/time all in one scroll — mirrors
@@ -623,6 +670,7 @@ const REMINDER_OFFSETS = [
   { label: '1 day', minutes: 24 * 60 }
 ]
 
+
 const OFFSET_UNITS = [
   { label: 'minutes', minutesPerUnit: 1 },
   { label: 'hours', minutesPerUnit: 60 },
@@ -630,6 +678,7 @@ const OFFSET_UNITS = [
   { label: 'weeks', minutesPerUnit: 7 * 24 * 60 },
   { label: 'months', minutesPerUnit: 30 * 24 * 60 }
 ]
+
 
 function ReminderSection({ eventId, startTime, endTime, colors }) {
   const [reminders, setReminders] = useState([])
@@ -644,7 +693,9 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
   // only selectable when the event actually has an end time set.
   const [anchor, setAnchor] = useState('start')
 
+
   const anchorTime = anchor === 'end' && endTime ? endTime : startTime
+
 
   async function loadReminders() {
     try {
@@ -657,9 +708,11 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
     }
   }
 
+
   useEffect(() => {
     loadReminders()
   }, [eventId])
+
 
   async function handleToggleEnabled(next) {
     setEnabled(next)
@@ -675,6 +728,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
       }
     }
   }
+
 
   async function handleAddReminder(remindAt) {
     if (remindAt.getTime() <= Date.now()) {
@@ -692,10 +746,12 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
     }
   }
 
+
   function handleOffsetPress(minutes) {
     const remindAt = new Date(anchorTime.getTime() - minutes * 60 * 1000)
     handleAddReminder(remindAt)
   }
+
 
   function handleCustomOffsetSubmit() {
     const amount = parseFloat(offsetAmount)
@@ -708,6 +764,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
     const remindAt = new Date(anchorTime.getTime() - totalMinutes * 60 * 1000)
     handleAddReminder(remindAt)
   }
+
 
   function openCustomPicker() {
     if (Platform.OS === 'android') {
@@ -735,6 +792,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
     }
   }
 
+
   async function handleDeleteReminder(reminder) {
     try {
       await deleteReminder(reminder.id)
@@ -744,6 +802,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
     }
   }
 
+
   return (
     <View>
       <View style={styles.switchRow}>
@@ -751,12 +810,14 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
         <Switch value={enabled} onValueChange={handleToggleEnabled} disabled={saving} />
       </View>
 
+
       {enabled && (
         <>
           <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 10 }}>
             Start: {startTime.toLocaleString()}
             {endTime ? `  ·  End: ${endTime.toLocaleString()}` : '  ·  End: Not set'}
           </Text>
+
 
           {reminders.map((reminder) => (
             <View key={reminder.id} style={styles.taskRow}>
@@ -768,6 +829,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
               </TouchableOpacity>
             </View>
           ))}
+
 
           <View style={styles.tabRow}>
             <TouchableOpacity
@@ -783,6 +845,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
               <Text style={{ color: tab === 'custom' ? colors.surface : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Custom</Text>
             </TouchableOpacity>
           </View>
+
 
           {tab === 'quick' && (
             <>
@@ -816,6 +879,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
                 </TouchableOpacity>
               </View>
 
+
               <View style={styles.offsetRow}>
                 {REMINDER_OFFSETS.map((opt) => (
                   <TouchableOpacity
@@ -828,6 +892,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
                   </TouchableOpacity>
                 ))}
               </View>
+
 
               <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>
                 Or set a custom amount before {anchor === 'end' ? 'end' : 'start'}:
@@ -852,16 +917,20 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
                     ))}
                   </Picker>
                 </View>
-                <TouchableOpacity
-                  onPress={handleCustomOffsetSubmit}
-                  disabled={saving}
-                  style={[styles.sectionSubmitBtn, { backgroundColor: colors.accentPrimary, opacity: saving ? 0.6 : 1 }]}
-                >
-                  <Text style={{ color: colors.surface, fontWeight: '700' }}>Set</Text>
-                </TouchableOpacity>
               </View>
+
+              <TouchableOpacity
+                onPress={handleCustomOffsetSubmit}
+                disabled={saving}
+                style={[styles.sectionSubmitBtn, { backgroundColor: colors.accentPrimary, opacity: saving ? 0.6 : 1 }]}
+              >
+                <Text style={{ color: colors.surface, fontWeight: '700' }}>
+                  {saving ? 'Setting…' : 'Set custom reminder'}
+                </Text>
+              </TouchableOpacity>
             </>
           )}
+
 
           {tab === 'custom' && (
             <>
@@ -874,6 +943,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
                   {saving ? 'Adding…' : 'Pick date & time'}
                 </Text>
               </TouchableOpacity>
+
 
               {Platform.OS === 'ios' && showCustomPicker && (
                 <DateTimePicker
@@ -893,6 +963,7 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
     </View>
   )
 }
+
 
 
 const styles = StyleSheet.create({
