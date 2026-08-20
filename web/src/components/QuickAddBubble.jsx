@@ -8,6 +8,13 @@
 // populate the SAME name/startTime/endTime state that EventModal's "Add
 // event" form already uses, then opens that modal. The existing
 // handleSubmit + Save button remains the one and only approval step.
+//
+// `disabled` mirrors mobile's `activeRouteName === 'EventDetail'` guard:
+// web has no navigator to read a route name from, so App.jsx passes down
+// whether an EventModal is currently open (`!!modalState`) instead. When
+// disabled, the bubble (and its own sheet, if it happened to be open)
+// don't render at all — avoids stacking a second quick-add on top of an
+// event form already being filled out.
 
 import React, { useState } from 'react'
 import { parseQuickAddText } from '../../../shared/quickAddParser'
@@ -21,7 +28,7 @@ function toLocalInputValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-export default function QuickAddBubble({ onParsed }) {
+export default function QuickAddBubble({ onParsed, disabled }) {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
 
@@ -38,6 +45,10 @@ export default function QuickAddBubble({ onParsed }) {
     setOpen(false)
     setText('')
   }
+
+  // Don't render the bubble (or its sheet) at all while an EventModal is
+  // already open. Matches mobile's early-return-on-EventDetail pattern.
+  if (disabled) return null
 
   return (
     <>

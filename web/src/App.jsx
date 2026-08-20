@@ -1406,7 +1406,7 @@ export default function App() {
         )}
 
 
-        <QuickAddBubble onParsed={handleQuickAddParsed} />
+        <QuickAddBubble onParsed={handleQuickAddParsed} disabled={!!modalState} />
       </div>
     </div>
   )
