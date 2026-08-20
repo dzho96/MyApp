@@ -403,10 +403,13 @@ export default function EventDetailScreen({ route, navigation }) {
 
 
 // --- Recurrence ---
-const FREQUENCIES = [
-  { label: 'Daily', value: 'daily' },
-  { label: 'Weekly', value: 'weekly' },
-  { label: 'Monthly', value: 'monthly' }
+// Frequency and interval are unified into a single "Every [N] [unit]" row
+// instead of a separate Daily/Weekly/Monthly picker above it, mirroring
+// how the Reminders section pairs its amount input with a unit picker.
+const RECURRENCE_UNITS = [
+  { label: 'day(s)', value: 'daily' },
+  { label: 'week(s)', value: 'weekly' },
+  { label: 'month(s)', value: 'monthly' }
 ]
 
 function RecurrenceSection({ eventId, colors }) {
@@ -514,12 +517,6 @@ function RecurrenceSection({ eventId, colors }) {
 
       {enabled && (
         <>
-          <View style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, padding: 0 }]}>
-            <Picker selectedValue={frequency} onValueChange={setFrequency} style={{ color: colors.textPrimary }}>
-              {FREQUENCIES.map((f) => <Picker.Item key={f.value} label={f.label} value={f.value} />)}
-            </Picker>
-          </View>
-
           <View style={styles.customOffsetRow}>
             <Text style={{ color: colors.textSecondary }}>Every</Text>
             <TextInput
@@ -528,9 +525,11 @@ function RecurrenceSection({ eventId, colors }) {
               keyboardType="numeric"
               style={[styles.offsetAmountInput, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
             />
-            <Text style={{ color: colors.textSecondary }}>
-              {frequency === 'daily' ? 'day(s)' : frequency === 'weekly' ? 'week(s)' : 'month(s)'}
-            </Text>
+            <View style={[styles.offsetUnitPicker, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
+              <Picker selectedValue={frequency} onValueChange={setFrequency} style={{ color: colors.textPrimary }}>
+                {RECURRENCE_UNITS.map((u) => <Picker.Item key={u.value} label={u.label} value={u.value} />)}
+              </Picker>
+            </View>
           </View>
 
           <View style={styles.anchorRow}>
