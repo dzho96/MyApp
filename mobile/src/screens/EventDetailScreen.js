@@ -596,9 +596,9 @@ function RecurrenceSection({ eventId, colors }) {
           <TouchableOpacity
             onPress={handleSaveRecurrence}
             disabled={saving}
-            style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, opacity: saving ? 0.6 : 1 }]}
+            style={[styles.sectionSubmitBtn, { backgroundColor: colors.accentPrimary, opacity: saving ? 0.6 : 1, alignSelf: 'flex-start', paddingHorizontal: 16 }]}
           >
-            <Text style={{ color: colors.accentPrimary, fontWeight: '600' }}>
+            <Text style={{ color: colors.surface, fontWeight: '700' }}>
               {saving ? 'Saving…' : 'Save repeat rule'}
             </Text>
           </TouchableOpacity>
@@ -610,6 +610,12 @@ function RecurrenceSection({ eventId, colors }) {
 
 
 // --- Reminders ---
+// Reminders are split into two tabs (Quick / Custom) rather than stacking
+// presets, custom offset, and exact date/time all in one scroll — mirrors
+// the request to make this feel like two clear modes rather than one long
+// form. An "Enable" toggle mirrors the Repeats section: off by default
+// unless reminders already exist, matching the Repeats on/off pattern for
+// visual consistency between the two sections.
 const REMINDER_OFFSETS = [
   { label: '10 min', minutes: 10 },
   { label: '30 min', minutes: 30 },
@@ -627,6 +633,8 @@ const OFFSET_UNITS = [
 
 function ReminderSection({ eventId, startTime, endTime, colors }) {
   const [reminders, setReminders] = useState([])
+  const [enabled, setEnabled] = useState(false)
+  const [tab, setTab] = useState('quick')
   const [showCustomPicker, setShowCustomPicker] = useState(false)
   const [saving, setSaving] = useState(false)
   const [offsetAmount, setOffsetAmount] = useState('15')
@@ -641,7 +649,9 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
   async function loadReminders() {
     try {
       const list = await fetchReminders(eventId)
-      setReminders(list.filter((r) => !r.dismissed))
+      const active = list.filter((r) => !r.dismissed)
+      setReminders(active)
+      if (active.length > 0) setEnabled(true)
     } catch (err) {
       setReminders([])
     }
@@ -650,6 +660,21 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
   useEffect(() => {
     loadReminders()
   }, [eventId])
+
+  async function handleToggleEnabled(next) {
+    setEnabled(next)
+    if (!next && reminders.length > 0) {
+      setSaving(true)
+      try {
+        await Promise.all(reminders.map((r) => deleteReminder(r.id)))
+        await loadReminders()
+      } catch (err) {
+        Alert.alert('Error', 'Failed to remove reminders')
+      } finally {
+        setSaving(false)
+      }
+    }
+  }
 
   async function handleAddReminder(remindAt) {
     if (remindAt.getTime() <= Date.now()) {
@@ -721,112 +746,149 @@ function ReminderSection({ eventId, startTime, endTime, colors }) {
 
   return (
     <View>
-      {reminders.map((reminder) => (
-        <View key={reminder.id} style={styles.taskRow}>
-          <Text style={{ flex: 1, color: colors.textPrimary }}>
-            {new Date(reminder.remind_at).toLocaleString()}
-          </Text>
-          <TouchableOpacity onPress={() => handleDeleteReminder(reminder)}>
-            <Text style={{ color: colors.textMuted, fontSize: 18 }}>×</Text>
-          </TouchableOpacity>
-        </View>
-      ))}
-
-      <View style={styles.anchorRow}>
-        <TouchableOpacity
-          onPress={() => setAnchor('start')}
-          style={[
-            styles.anchorChip,
-            { borderColor: colors.borderDefault, backgroundColor: anchor === 'start' ? colors.accentPrimary : colors.surface }
-          ]}
-        >
-          <Text style={{ color: anchor === 'start' ? colors.surface : colors.textPrimary, fontWeight: '600', fontSize: 12 }}>
-            Before start
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => endTime && setAnchor('end')}
-          disabled={!endTime}
-          style={[
-            styles.anchorChip,
-            {
-              borderColor: colors.borderDefault,
-              backgroundColor: anchor === 'end' ? colors.accentPrimary : colors.surface,
-              opacity: endTime ? 1 : 0.4
-            }
-          ]}
-        >
-          <Text style={{ color: anchor === 'end' ? colors.surface : colors.textPrimary, fontWeight: '600', fontSize: 12 }}>
-            Before end{!endTime ? ' (no end time)' : ''}
-          </Text>
-        </TouchableOpacity>
+      <View style={styles.switchRow}>
+        <Text style={{ color: colors.textSecondary }}>Enable</Text>
+        <Switch value={enabled} onValueChange={handleToggleEnabled} disabled={saving} />
       </View>
 
-      <View style={styles.offsetRow}>
-        {REMINDER_OFFSETS.map((opt) => (
-          <TouchableOpacity
-            key={opt.minutes}
-            onPress={() => handleOffsetPress(opt.minutes)}
-            disabled={saving}
-            style={[styles.offsetChip, { borderColor: colors.borderDefault, backgroundColor: colors.surface, opacity: saving ? 0.6 : 1 }]}
-          >
-            <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{opt.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {enabled && (
+        <>
+          <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 10 }}>
+            Start: {startTime.toLocaleString()}
+            {endTime ? `  ·  End: ${endTime.toLocaleString()}` : '  ·  End: Not set'}
+          </Text>
 
-      <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>
-        Or set a custom amount before {anchor === 'end' ? 'end' : 'start'}:
-      </Text>
-      <View style={styles.customOffsetRow}>
-        <TextInput
-          value={offsetAmount}
-          onChangeText={setOffsetAmount}
-          keyboardType="numeric"
-          placeholder="15"
-          placeholderTextColor={colors.textMuted}
-          style={[styles.offsetAmountInput, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
-        />
-        <View style={[styles.offsetUnitPicker, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
-          <Picker
-            selectedValue={offsetUnitIndex}
-            onValueChange={setOffsetUnitIndex}
-            style={{ color: colors.textPrimary }}
-          >
-            {OFFSET_UNITS.map((unit, index) => (
-              <Picker.Item key={unit.label} label={unit.label} value={index} />
-            ))}
-          </Picker>
-        </View>
-        <TouchableOpacity
-          onPress={handleCustomOffsetSubmit}
-          disabled={saving}
-          style={[styles.offsetSubmitBtn, { backgroundColor: colors.textPrimary, opacity: saving ? 0.6 : 1 }]}
-        >
-          <Text style={{ color: colors.surface, fontWeight: '700' }}>Set</Text>
-        </TouchableOpacity>
-      </View>
+          {reminders.map((reminder) => (
+            <View key={reminder.id} style={styles.taskRow}>
+              <Text style={{ flex: 1, color: colors.textPrimary }}>
+                {new Date(reminder.remind_at).toLocaleString()}
+              </Text>
+              <TouchableOpacity onPress={() => handleDeleteReminder(reminder)}>
+                <Text style={{ color: colors.textMuted, fontSize: 18 }}>×</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
 
-      <TouchableOpacity
-        onPress={openCustomPicker}
-        disabled={saving}
-        style={[styles.input, { borderColor: colors.borderDefault, backgroundColor: colors.surface, opacity: saving ? 0.6 : 1 }]}
-      >
-        <Text style={{ color: colors.accentPrimary, fontWeight: '600' }}>
-          {saving ? 'Adding…' : '+ Custom date & time'}
-        </Text>
-      </TouchableOpacity>
+          <View style={styles.tabRow}>
+            <TouchableOpacity
+              onPress={() => setTab('quick')}
+              style={[styles.tabBtn, { borderColor: colors.borderDefault, backgroundColor: tab === 'quick' ? colors.accentPrimary : colors.surface }]}
+            >
+              <Text style={{ color: tab === 'quick' ? colors.surface : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Quick</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setTab('custom')}
+              style={[styles.tabBtn, { borderColor: colors.borderDefault, backgroundColor: tab === 'custom' ? colors.accentPrimary : colors.surface }]}
+            >
+              <Text style={{ color: tab === 'custom' ? colors.surface : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Custom</Text>
+            </TouchableOpacity>
+          </View>
 
-      {Platform.OS === 'ios' && showCustomPicker && (
-        <DateTimePicker
-          value={new Date(Date.now() + 15 * 60 * 1000)}
-          mode="datetime"
-          minimumDate={new Date()}
-          onChange={(event, date) => {
-            setShowCustomPicker(false)
-            if (event.type === 'set' && date) handleAddReminder(date)
-          }}
-        />
+          {tab === 'quick' && (
+            <>
+              <View style={styles.anchorRow}>
+                <TouchableOpacity
+                  onPress={() => setAnchor('start')}
+                  style={[
+                    styles.anchorChip,
+                    { borderColor: colors.borderDefault, backgroundColor: anchor === 'start' ? colors.accentPrimary : colors.surface }
+                  ]}
+                >
+                  <Text style={{ color: anchor === 'start' ? colors.surface : colors.textPrimary, fontWeight: '600', fontSize: 12 }}>
+                    Before start
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => endTime && setAnchor('end')}
+                  disabled={!endTime}
+                  style={[
+                    styles.anchorChip,
+                    {
+                      borderColor: colors.borderDefault,
+                      backgroundColor: anchor === 'end' ? colors.accentPrimary : colors.surface,
+                      opacity: endTime ? 1 : 0.4
+                    }
+                  ]}
+                >
+                  <Text style={{ color: anchor === 'end' ? colors.surface : colors.textPrimary, fontWeight: '600', fontSize: 12 }}>
+                    Before end{!endTime ? ' (no end time)' : ''}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.offsetRow}>
+                {REMINDER_OFFSETS.map((opt) => (
+                  <TouchableOpacity
+                    key={opt.minutes}
+                    onPress={() => handleOffsetPress(opt.minutes)}
+                    disabled={saving}
+                    style={[styles.offsetChip, { borderColor: colors.borderDefault, backgroundColor: colors.surface, opacity: saving ? 0.6 : 1 }]}
+                  >
+                    <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{opt.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>
+                Or set a custom amount before {anchor === 'end' ? 'end' : 'start'}:
+              </Text>
+              <View style={styles.customOffsetRow}>
+                <TextInput
+                  value={offsetAmount}
+                  onChangeText={setOffsetAmount}
+                  keyboardType="numeric"
+                  placeholder="15"
+                  placeholderTextColor={colors.textMuted}
+                  style={[styles.offsetAmountInput, { borderColor: colors.borderDefault, color: colors.textPrimary, backgroundColor: colors.surface }]}
+                />
+                <View style={[styles.offsetUnitPicker, { borderColor: colors.borderDefault, backgroundColor: colors.surface }]}>
+                  <Picker
+                    selectedValue={offsetUnitIndex}
+                    onValueChange={setOffsetUnitIndex}
+                    style={{ color: colors.textPrimary }}
+                  >
+                    {OFFSET_UNITS.map((unit, index) => (
+                      <Picker.Item key={unit.label} label={unit.label} value={index} />
+                    ))}
+                  </Picker>
+                </View>
+                <TouchableOpacity
+                  onPress={handleCustomOffsetSubmit}
+                  disabled={saving}
+                  style={[styles.sectionSubmitBtn, { backgroundColor: colors.accentPrimary, opacity: saving ? 0.6 : 1 }]}
+                >
+                  <Text style={{ color: colors.surface, fontWeight: '700' }}>Set</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {tab === 'custom' && (
+            <>
+              <TouchableOpacity
+                onPress={openCustomPicker}
+                disabled={saving}
+                style={[styles.sectionSubmitBtn, { backgroundColor: colors.accentPrimary, opacity: saving ? 0.6 : 1, alignSelf: 'flex-start', paddingHorizontal: 16 }]}
+              >
+                <Text style={{ color: colors.surface, fontWeight: '700' }}>
+                  {saving ? 'Adding…' : 'Pick date & time'}
+                </Text>
+              </TouchableOpacity>
+
+              {Platform.OS === 'ios' && showCustomPicker && (
+                <DateTimePicker
+                  value={new Date(Date.now() + 15 * 60 * 1000)}
+                  mode="datetime"
+                  minimumDate={new Date()}
+                  onChange={(event, date) => {
+                    setShowCustomPicker(false)
+                    if (event.type === 'set' && date) handleAddReminder(date)
+                  }}
+                />
+              )}
+            </>
+          )}
+        </>
       )}
     </View>
   )
@@ -852,5 +914,7 @@ const styles = StyleSheet.create({
   customOffsetRow: { flexDirection: 'row', gap: 8, marginBottom: 10, alignItems: 'center' },
   offsetAmountInput: { width: 60, borderWidth: 1, borderRadius: 8, padding: 8, textAlign: 'center' },
   offsetUnitPicker: { flex: 1, borderWidth: 1, borderRadius: 8 },
-  offsetSubmitBtn: { borderRadius: 8, paddingHorizontal: 16, justifyContent: 'center' }
+  sectionSubmitBtn: { borderRadius: 8, paddingVertical: 10, justifyContent: 'center', alignItems: 'center' },
+  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  tabBtn: { flex: 1, borderWidth: 1, borderRadius: 8, paddingVertical: 8, alignItems: 'center' }
 })
