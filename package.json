@@ -1,5 +1,9 @@
 {
-  "dependencies": {
-    "chrono-node": "^2.10.1"
-  }
+  "name": "myapp",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "web",
+    "mobile"
+  ]
 }
