@@ -8,6 +8,7 @@ import { ThemeProvider, useThemeMode } from './src/theme'
 import DashboardScreen from './src/screens/DashboardScreen'
 import CalendarScreen from './src/screens/CalendarScreen'
 import EventDetailScreen from './src/screens/EventDetailScreen'
+import QuickAddBubble from './src/components/QuickAddBubble'
 import { snoozeReminder } from './src/api'
 import {
   ensureNotificationPermission,
@@ -17,9 +18,11 @@ import {
 } from './src/notifications'
 
 
+
 const Tab = createBottomTabNavigator()
 const DashboardStack = createNativeStackNavigator()
 const CalendarStack = createNativeStackNavigator()
+
 
 
 function HeaderAddButton({ navigation }) {
@@ -32,14 +35,16 @@ function HeaderAddButton({ navigation }) {
 }
 
 
+
 function HeaderThemeToggle() {
   const { mode, toggleMode, colors } = useThemeMode()
   return (
     <TouchableOpacity onPress={toggleMode} style={{ marginLeft: 12 }}>
-      <Text style={{ color: colors.textPrimary }}>{mode === 'dark' ? '☀️' : '🌙'}</Text>
+      <Text style={{ color: colors.textPrimary }}>{mode === 'dark' ? '\u2600\ufe0f' : '\ud83c\udf19'}</Text>
     </TouchableOpacity>
   )
 }
+
 
 
 function DashboardStackScreen() {
@@ -61,6 +66,7 @@ function DashboardStackScreen() {
 }
 
 
+
 function CalendarStackScreen() {
   const { colors } = useThemeMode()
   return (
@@ -77,6 +83,7 @@ function CalendarStackScreen() {
     </CalendarStack.Navigator>
   )
 }
+
 
 
 function Tabs() {
@@ -97,6 +104,7 @@ function Tabs() {
 }
 
 
+
 // Handles taps on the Snooze 15m / Snooze 1h / Open notification action
 // buttons (registered in setupNotificationCategories). Snoozing calls the
 // backend, which dismisses the original reminder and inserts a new one
@@ -109,7 +117,9 @@ function useReminderNotificationResponses(navigationRef) {
       const data = notification.request.content.data || {}
       const reminderId = data.reminderId
 
+
       if (!reminderId) return
+
 
       if (actionIdentifier === 'snooze-15' || actionIdentifier === 'snooze-60') {
         const minutes = actionIdentifier === 'snooze-15' ? 15 : 60
@@ -129,6 +139,7 @@ function useReminderNotificationResponses(navigationRef) {
         return
       }
 
+
       if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER || actionIdentifier === 'open') {
         if (data.eventId && navigationRef.current) {
           navigationRef.current.navigate('DashboardTab', {
@@ -139,13 +150,16 @@ function useReminderNotificationResponses(navigationRef) {
       }
     })
 
+
     return () => subscription.remove()
   }, [navigationRef])
 }
 
 
+
 export default function App() {
   const navigationRef = useRef(null)
+
 
   useEffect(() => {
     async function initNotifications() {
@@ -155,12 +169,15 @@ export default function App() {
     initNotifications()
   }, [])
 
+
   useReminderNotificationResponses(navigationRef)
+
 
   return (
     <ThemeProvider>
       <NavigationContainer ref={navigationRef}>
         <Tabs />
+        <QuickAddBubble />
       </NavigationContainer>
     </ThemeProvider>
   )
