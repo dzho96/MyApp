@@ -1,7 +1,11 @@
 // mobile/src/components/QuickAddBubble.js
 //
 // Floating "PA" quick-add bubble. Persists across all tabs (mounted once
-// in App.js, above <Tabs />, inside NavigationContainer).
+// in App.js, above <Tabs />, inside NavigationContainer), but hides itself
+// while the user is on EventDetail — opening a second quick-add modal on
+// top of an event form already being filled out (whether opened via the
+// bubble or the static "+ Add" button) is confusing and was a source of
+// crashes when tapped in rapid succession.
 //
 // Tap the bubble -> modal with a text input -> "Parse" runs the free,
 // offline chrono-node based parser (shared/quickAddParser.js) -> navigates
@@ -11,15 +15,28 @@
 
 import React, { useState } from 'react'
 import { View, Modal, TouchableOpacity, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useNavigationState } from '@react-navigation/native'
 import { useThemeMode } from '../theme'
 import { parseQuickAddText } from '../../../shared/quickAddParser'
+
+// Walks the nested navigation state to find the name of the currently
+// focused route, regardless of how deep it is inside tab/stack nesting.
+function getActiveRouteName(state) {
+  if (!state || !state.routes || state.index == null) return null
+  const route = state.routes[state.index]
+  if (route.state) {
+    return getActiveRouteName(route.state)
+  }
+  return route.name
+}
 
 export default function QuickAddBubble() {
   const { colors } = useThemeMode()
   const navigation = useNavigation()
   const [visible, setVisible] = useState(false)
   const [text, setText] = useState('')
+
+  const activeRouteName = useNavigationState((state) => getActiveRouteName(state))
 
   function handleOpen() {
     setText('')
@@ -49,10 +66,17 @@ export default function QuickAddBubble() {
           recurrence: draft.recurrence
         },
         parseNotes: draft.recurrence
-          ? [...draft.parseNotes, 'Recurrence detected but not yet set — save this event first, then open "Repeats" below to configure it.']
+          ? [...draft.parseNotes, 'Recurrence detected — will be set automatically when you save.']
           : draft.parseNotes
       }
     })
+  }
+
+  // Don't render the bubble at all while already on the event form —
+  // avoids a confusing "quick-add on top of quick-add" state and the
+  // rapid re-navigation issue that could occur from tapping it there.
+  if (activeRouteName === 'EventDetail') {
+    return null
   }
 
   return (
