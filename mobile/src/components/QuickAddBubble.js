@@ -43,29 +43,25 @@ export default function QuickAddBubble({ activeRouteName }) {
   }
 
   function handleParse() {
-    const draft = parseQuickAddText(text)
-    setVisible(false)
-    setText('')
+  const draft = parseQuickAddText(text)
+  setVisible(false)
+  setText('')
 
-    // Navigate into the Dashboard stack's EventDetail screen with a draft
-    // payload. eventId stays null so EventDetailScreen treats this as a
-    // new, unsaved event — user reviews/edits and taps Save to approve.
-    navigation.navigate('DashboardTab', {
-      screen: 'EventDetail',
-      params: {
-        eventId: null,
-        draft: {
-          name: draft.name,
-          startTime: draft.startTime.toISOString(),
-          endTime: draft.endTime ? draft.endTime.toISOString() : null,
-          recurrence: draft.recurrence
-        },
-        parseNotes: draft.recurrence
-          ? [...draft.parseNotes, 'Recurrence detected — will be set automatically when you save.']
-          : draft.parseNotes
-      }
-    })
-  }
+  navigation.navigate('DashboardTab', {
+    screen: 'EventDetail',
+    params: {
+      eventId: null,
+      draft: {
+        name: draft.name,
+        startTime: draft.startTime.toISOString(),
+        endTime: draft.endTime ? draft.endTime.toISOString() : null,
+        recurrence: draft.recurrence,
+        reminders: draft.reminders
+      },
+      parseNotes: draft.parseNotes
+    }
+  })
+}
 
   // Don't render the bubble at all while already on the event form —
   // avoids a confusing "quick-add on top of quick-add" state and the

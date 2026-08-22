@@ -87,13 +87,19 @@ function extractReminders(text, now, notes) {
       return ' '
     }
 
+    const anchor = normalizeReminderAnchor(explicitAnchor, pronounAnchor)
+
     reminders.push({
       kind: 'relative',
-      anchor: normalizeReminderAnchor(explicitAnchor, pronounAnchor),
+      anchor,
       amount,
       unit: unit.unit,
       offsetMinutes: amount * unit.minutesPerUnit
     })
+
+    notes.push(
+      `Detected reminder: ${amount} ${unit.unit} before ${anchor === 'end' ? 'end' : 'start'}.`
+    )
     return ' '
   })
 
@@ -112,6 +118,7 @@ function extractReminders(text, now, notes) {
         notes.push(`Reminder “${match.trim()}” was not added because its date/time is ambiguous or in the past. Please add it manually.`)
       } else {
         reminders.push({ kind: 'absolute', remindAt: date.toISOString() })
+        notes.push(`Detected reminder: ${date.toLocaleString()}.`)
       }
     } catch (err) {
       notes.push(`Reminder “${match.trim()}” was not added because its date/time could not be parsed. Please add it manually.`)
